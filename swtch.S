@@ -8,8 +8,8 @@
 
 .globl swtch
 swtch:
-  movl 4(%esp), %eax
-  movl 8(%esp), %edx
+  movl 4(%esp), %eax        # eax = old address
+  movl 8(%esp), %edx        # edx = new address 
 
   # Save old callee-saved registers
   pushl %ebp

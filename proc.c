@@ -221,6 +221,17 @@ fork(void)
   return pid;
 }
 
+
+/* @brief clone system call 
+ *        clone unlike fork, share the virtual memory space, open file descripters 
+ *        and filesystem information, etc. The execution of such a processes
+ *        task is done by the memory address specified as parameter.
+ */
+thread_id_t clone(void *func(void *args), void *child_stack, int flags) {
+
+}
+
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
