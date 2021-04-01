@@ -2,7 +2,6 @@
 #include "stat.h"
 #include "user.h"
 
-
 int foo(void *args) {
     int a = 20;
     int b = 10;
@@ -26,8 +25,6 @@ int baz(void *args) {
 
 int main(int argc, char *argv[]) {
     clone(foo, 0, 0, 0);
-    clone(bar, 0, 0, 0);
-    clone(baz, 0, 0, 0);
     exit();
 }
 

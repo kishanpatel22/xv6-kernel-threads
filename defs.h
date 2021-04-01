@@ -106,6 +106,11 @@ int             pipewrite(struct pipe*, char*, int);
 int             cpuid(void);
 void            exit(void);
 int             fork(void);
+
+/* @brief implementation of clone system call
+ */
+int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
+
 int             growproc(int);
 int             kill(int);
 struct cpu*     mycpu(void);
@@ -181,6 +186,13 @@ void            freevm(pde_t*);
 void            inituvm(pde_t*, char*, uint);
 int             loaduvm(pde_t*, char*, struct inode*, uint, uint);
 pde_t*          copyuvm(pde_t*, uint);
+
+/* @brief clone memory region execpt the stack frame 
+ */
+char*           clonepage(char *);
+pde_t*          cloneuvm(pde_t*, uint);
+int             dealloccloneuvm(pde_t *pgdir, uint size);
+
 void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);

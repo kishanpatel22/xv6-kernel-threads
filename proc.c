@@ -224,7 +224,54 @@ fork(void)
 /* @brief clone system call implementation
  */
 int clone(int (*func)(void *args), void *child_stack, int flags, void *args) {
-    return 0;
+    struct proc *np;
+    struct proc *curproc = myproc();
+    np = allocproc();
+    
+    /* modify or duplicate all the fileds of struct proc according to the
+     * current process PCB structure.
+     */ 
+
+    /* size of the child process is same as parent */
+    np->sz = curproc->sz;
+    
+    /* page directory only the entry for stack of child process
+     * gete changed. New stack is allocated for the child.
+     */
+    if((np->pgdir = cloneuvm(curproc->pgdir, curproc->sz)) == 0){
+        kfree(np->kstack);
+        np->kstack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+
+    dealloccloneuvm(np->pgdir, np->sz);
+    
+    cprintf("%d\n", np->sz);
+
+    np->state = UNUSED;
+    return -1;
+
+
+    /* child process parent becomes the current process */
+    np->parent = curproc;
+    
+    /* child process state is set to running */
+    np->state = RUNNABLE;
+    
+    /* copy all the open file descriptors from the file table */
+    for(uint i = 0; i < NOFILE; i++) {
+        if(curproc->ofile[i]) {
+            np->ofile[i] = filedup(curproc->ofile[i]);
+        } 
+    }
+    np->cwd = idup(curproc->cwd);
+
+    /* name of the child process is same as that of the original process */ 
+    safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+    
+    /* returns the pid of the child process */
+    return np->pid;
 }
 
 // Exit the current process.  Does not return.
