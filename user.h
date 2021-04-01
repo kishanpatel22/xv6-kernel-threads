@@ -24,6 +24,10 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 
+/* @brief implementation of clone system call
+ */
+int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);

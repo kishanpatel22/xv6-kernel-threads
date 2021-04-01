@@ -13,6 +13,31 @@ sys_fork(void)
   return fork();
 }
 
+
+/* @brief sys_clone function copies the arguments to clone from the user process
+ *        address space to the xv6 kernel memory. The function after copying
+ *        the values passes the control 
+ *
+ * @Note  xv6 kernel only reads user process arguments on stack.
+ */
+int sys_clone(void) {
+    /* actaul clone calling convention : 
+     * clone(int (*fun)(void *), void *child_stack), int flags, void *args)
+     */ 
+    int (*func)(void *);
+    //void *child_stack, *args;
+    //int flags;
+    char *fptr;
+
+    if(argptr(0, &fptr, 4) == -1) {
+        return -1;
+    }
+    func = (int (*)(void *))fptr;
+    cprintf("%d\n", func);
+    
+    return -1;
+}
+
 int
 sys_exit(void)
 {
@@ -89,3 +114,5 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+
