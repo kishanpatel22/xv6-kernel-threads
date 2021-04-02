@@ -226,11 +226,12 @@ fork(void)
 int clone(int (*func)(void *args), void *child_stack, int flags, void *args) {
     struct proc *np;
     struct proc *curproc = myproc();
-    np = allocproc();
+    uint sp, stack_args[2];
     
-    /* modify or duplicate all the fileds of struct proc according to the
-     * current process PCB structure.
+    /* modify or duplicate all the fileds of struct proc accordingly 
+     * to create a new clone for the current process 
      */ 
+    np = allocproc();
 
     /* size of the child process is same as parent */
     np->sz = curproc->sz;
@@ -244,32 +245,45 @@ int clone(int (*func)(void *args), void *child_stack, int flags, void *args) {
         np->state = UNUSED;
         return -1;
     }
-
-    dealloccloneuvm(np->pgdir, np->sz);
     
-    cprintf("%d\n", np->sz);
+    /* build the handcrafted stack frame for the function 
+     */ 
+    stack_args[0] = (uint)exit;         /* 4 bytes returns instruction pointer  */
+    stack_args[1] = (uint)args;         /* 4 bytes of the argument pointer */
 
-    np->state = UNUSED;
-    return -1;
+    sp = PGROUNDUP(np->sz);
+    sp -= 2 * 4;
 
+    /* add the return address and argument pointer on the stack */
+    if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
+        dealloccloneuvm(np->pgdir, np->sz);
+        kfree(np->kstack);
+        np->kstack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+    
+    *np->tf = *curproc->tf;             /* copy the trap frame */
+    np->tf->eip = (uint)func;           /* change start point of execution */
+    np->tf->esp = sp;                   /* change stack pointer for execution */
 
     /* child process parent becomes the current process */
     np->parent = curproc;
-    
-    /* child process state is set to running */
-    np->state = RUNNABLE;
     
     /* copy all the open file descriptors from the file table */
     for(uint i = 0; i < NOFILE; i++) {
         if(curproc->ofile[i]) {
             np->ofile[i] = filedup(curproc->ofile[i]);
-        } 
+        }
     }
     np->cwd = idup(curproc->cwd);
-
+    
     /* name of the child process is same as that of the original process */ 
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
     
+    /* child process state is set to running */
+    np->state = RUNNABLE;
+     
     /* returns the pid of the child process */
     return np->pid;
 }
@@ -388,7 +402,7 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
-
+    
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
