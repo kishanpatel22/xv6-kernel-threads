@@ -111,6 +111,12 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+    
+  // by default the process is not thread
+  p->tgid = -1;
+    
+  // thread stack is not present for processes 
+  p->tstack = (void *)0;
 
   return p;
 }
@@ -221,56 +227,67 @@ fork(void)
   return pid;
 }
 
-/* @brief clone system call implementation
- */
-int clone(int (*func)(void *args), void *child_stack, int flags, void *args) {
+// clone system call implementation for xv6 
+// The clone child process shares the same virtual 
+// address as of the parent process except the
+// stack frame of the child process 
+// clone returns the new thread id of the child
+int 
+clone(int (*func)(void *args), void *child_stack, int flags, void *args) 
+{
     struct proc *np;
     struct proc *curproc = myproc();
     uint sp, stack_args[2];
     
-    /* modify or duplicate all the fileds of struct proc accordingly 
-     * to create a new clone for the current process 
-     */ 
+    // modify or duplicate all the fileds of struct proc accordingly 
+    // to create a child process which is clone of the current process 
     np = allocproc();
 
-    /* size of the child process is same as parent */
+    // size of the child process is same as parent 
     np->sz = curproc->sz;
+
+    // page directory will be same, since child shares the same virtual memory 
+    np->pgdir = curproc->pgdir;
     
-    /* page directory only the entry for stack of child process
-     * gete changed. New stack is allocated for the child.
-     */
-    if((np->pgdir = cloneuvm(curproc->pgdir, curproc->sz)) == 0){
+    // child process stack needs to passed as parameter
+    if(!child_stack) {
         kfree(np->kstack);
         np->kstack = 0;
         np->state = UNUSED;
         return -1;
     }
     
-    /* build the handcrafted stack frame for the function 
-     */ 
-    stack_args[0] = (uint)exit;         /* 4 bytes returns instruction pointer  */
-    stack_args[1] = (uint)args;         /* 4 bytes of the argument pointer */
-
-    sp = PGROUNDUP(np->sz);
+    // point the sp to the child stack
+    np->tstack = child_stack;
+    sp = (uint)child_stack;
     sp -= 2 * 4;
+ 
+    // build the handcrafted stack frame for the function 
+    stack_args[0] = (uint)exit;         // 4 bytes return instruction pointer  
+    stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
 
-    /* add the return address and argument pointer on the stack */
+    // add the return address and argument pointer on the stack 
     if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
-        dealloccloneuvm(np->pgdir, np->sz);
         kfree(np->kstack);
         np->kstack = 0;
         np->state = UNUSED;
         return -1;
     }
     
-    *np->tf = *curproc->tf;             /* copy the trap frame */
-    np->tf->eip = (uint)func;           /* change start point of execution */
-    np->tf->esp = sp;                   /* change stack pointer for execution */
-
-    /* child process parent becomes the current process */
-    np->parent = curproc;
+    *np->tf = *curproc->tf;             // copy the trap frame 
+    np->tf->eip = (uint)func;           // change start point of execution 
+    np->tf->esp = sp;                   // change stack pointer for execution 
     
-    /* copy all the open file descriptors from the file table */
+    // is the current process is thread parent will be current process parent
+    if(curproc->tgid != -1) {
+        np->parent = curproc->parent;
+    } 
+    // child process parent becomes the current process 
+    else {
+        np->parent = curproc; 
+    }
+    
+    // copy all the open file descriptors from the file table 
     for(uint i = 0; i < NOFILE; i++) {
         if(curproc->ofile[i]) {
             np->ofile[i] = filedup(curproc->ofile[i]);
@@ -278,14 +295,17 @@ int clone(int (*func)(void *args), void *child_stack, int flags, void *args) {
     }
     np->cwd = idup(curproc->cwd);
     
-    /* name of the child process is same as that of the original process */ 
+    // name of the child process is same as that of the original process 
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
     
-    /* child process state is set to running */
+    // child process state is set to runnable for scheduling
     np->state = RUNNABLE;
-     
-    /* returns the pid of the child process */
-    return np->pid;
+    
+    // child process formed would be thread, thus pid is same as thread id
+    np->tgid = np->pid;
+
+    // returns the thread id of the child process 
+    return np->tgid;
 }
 
 // Exit the current process.  Does not return.
@@ -297,7 +317,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-
+  
   if(curproc == initproc)
     panic("init exiting");
 
@@ -377,6 +397,59 @@ wait(void)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
 }
+
+
+// join the thread with the given threadid with thread leader.
+// join call wait untill the execution of the thread with given threadid
+// join returns 0 in case of successs otherwise returns -1
+int 
+join(int thread_id) {
+    struct proc *leader_thread, *wait_thread, *p;
+    struct proc *curproc = myproc();
+    int wait_thread_exits = 0;
+    
+    // the leader thread is current process 
+    if(curproc->tgid != -1) {
+        leader_thread = curproc;
+    } 
+    // current process itself can be thread
+    else {
+        leader_thread = curproc->parent;
+    }
+    
+    // check if the given thread id is actaully thread 
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->tgid == thread_id) {
+            wait_thread = p; 
+            wait_thread_exits = 1;
+            break;
+        } 
+    }
+    // wait thread doesn't exists or 
+    // wait thread doesn't belong the group of thread leader
+    if(!wait_thread_exits || wait_thread->parent != leader_thread) {
+        return -1;
+    }
+
+    // wait for the given process to become zombie process 
+    acquire(&ptable.lock);
+    for(;;) {
+        if(wait_thread->state == ZOMBIE) {
+            // Found one, the thread state to be waiting
+            kfree(wait_thread->kstack);
+            wait_thread->kstack = 0;
+            wait_thread->pgdir = 0;
+            wait_thread->pid = 0;
+            wait_thread->parent = 0;
+            wait_thread->name[0] = 0;
+            wait_thread->killed = 0;
+            wait_thread->state = UNUSED;
+            release(&ptable.lock);
+            return 0;
+        }
+    }
+}
+
 
 //PAGEBREAK: 42
 // Per-CPU process scheduler.

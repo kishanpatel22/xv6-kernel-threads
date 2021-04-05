@@ -2,12 +2,11 @@
 #include "stat.h"
 #include "user.h"
 
-int foo(void *args) {
-    printf(1, "I reach here !!\n");
-    int a = 20;
-    int b = 10;
-    return a * b;
-}
+struct myargs {
+    int x;
+    int y;
+    int z;
+};
 
 int bar(void *args) {
     int a = 10;
@@ -21,20 +20,27 @@ int baz(void *args) {
     return a / b;
 }
 
-typedef struct args {
-    int x;
-    int y;
-    int z;
-} args;
+int foo(void *args) {
+    struct myargs *temp = (struct myargs *)args;
+    int a = temp->x;
+    int b = temp->y;
+    int c = temp->z;
+    printf(1, "a = %d, b = %d, c = %d ... foo is over\n", a, b, c);
+    return a * b;
+}
 
 int main(int argc, char *argv[]) {
-    args temp;
+    struct myargs temp;
     temp.x = 10;
     temp.y = 20;
     temp.z = 30;
-    int x = clone(foo, 0, 0, (void *)&temp);
-    printf(1, "return from clone = %d\n", x);
-    sleep(2);
+    
+    void *child_stack = malloc(4096);
+    int tgid = clone(foo, child_stack, 0, (void *)&temp);
+    join(tgid);
+
+    printf(1, "Now main over\n");
+    free(child_stack);
     exit();
 }
 

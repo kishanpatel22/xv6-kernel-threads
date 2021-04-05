@@ -14,43 +14,52 @@ sys_fork(void)
 }
 
 
-/* @brief sys_clone function copies the arguments to clone from the user process
- *        address space to the xv6 kernel memory. The function after copying
- *        the values passes the control 
- *
- * @Note  xv6 kernel only reads user process arguments on stack.
- */
+// sys_clone function copies the arguments to clone from the user process
+// address space to the xv6 kernel memory. The function after copying
+// the values passes the control 
+// Note : xv6 kernel only reads user process arguments on stack.
 int sys_clone(void) {
     
-    /* actaul clone call prototype : 
-     * clone(int (*fun)(void *), void *child_stack), int flags, void *args)
-     */ 
+    // actual clone call prototype : 
+    // clone(int (*fun)(void *), void *child_stack), int flags, void *args)
+      
     int (*func)(void *);
-    void *child_stack, *args;
+    char *child_stack, *args;
     int flags;
     
-    /* read the function pointer */
+    // read the function pointer 
     if(argptr(0, (char **)&(func), 4) == -1) {
         return -1;
     }
     
-    /* read the child stack address */
-    if(argptr(1, (char **)&(child_stack), 4) == -1) {
+    // read the child stack address 
+    if(argptr(1, &child_stack, 4) == -1) {
         return -1;
     }
     
-    /* read the flags */
+    // read the flags 
     if(argint(2, &flags) == -1) {
         return -1;
     }
     
-    /* read the address of argument */
-    if(argptr(2, (char **)&(args), 4) == -1) {
+    // read the address of argument 
+    if(argptr(3, &args, 4) == -1) {
         return -1;
     }
 
-    /* call to actual kernel clone function */
-    return clone(func, child_stack, flags, args);
+    // call to actual kernel clone function 
+    return clone(func, (void *)child_stack, flags, (void *)args);
+}
+
+// sys join copies the contents from user stack to the kernel memory 
+// sys join calls join which waits for the given thread to be over
+int sys_join(void) {
+    int thread_id;
+    // read the thread ID which is passed 
+    if(argint(0, &thread_id) == -1) {
+        return -1;
+    } 
+    return join(thread_id);
 }
 
 int

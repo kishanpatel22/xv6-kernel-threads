@@ -344,7 +344,6 @@ bad:
   return 0;
 }
 
-
 /* @brief clone any page creates a new page and 
  *        copies the contents byte-by-byte
  */
@@ -388,35 +387,45 @@ pde_t *cloneuvm(pde_t *pgdir, uint size) {
      *                          size 
      */
     stack_end = PGROUNDUP(size) - PGSIZE;
-       
+    
+    /* the page directory not containing any entry for the stack page       */
+    if(!(PTE_FLAGS(pgdir[PDX(stack_end)]) & PTE_P)) {
+        kfree((char *)new_pgdir);
+        return 0;
+    }
+
+    /* clone a new page table entry containing the stack                    */
     page_address = (char *)P2V(PTE_ADDR(pgdir[PDX(stack_end)]));
-    /* clone a new page table entry containing the stack */
     if((new_pte = (pte_t *)clonepage(page_address)) == 0) {
         kfree((char *)new_pgdir);
         return 0;
     }
-    /* update page directory containing page table entry for child process stack */
+    /* update page directory entry for containing 
+     * page table entry for cloned process stack 
+     */
     new_pgdir[PDX(stack_end)] = V2P(new_pte) | PTE_P | PTE_W | PTE_U;
 
-
-    /* allocate page for the new stack */   
+    /* allocate page for the new stack address space                        */   
     if((new_stack_page = (uint *)kalloc()) == 0) {
         kfree((char *)new_pgdir);
         kfree((char *)new_pte);
         return 0;
     }
-    /* clear the stack page */ 
+    /* clear the stack page                                                 */ 
     memset(new_stack_page, 0, PGSIZE);
-    /* get the page table entry which contains the stack address space */
+    /* get the page table entry which contains the stack address space      */
     if((stack_pte = walkpgdir(new_pgdir, (void *)stack_end, 0)) == 0) {
         return 0;
     } 
-    /* update the stack page entry to point to the new stack address space */
+    /* update the stack page entry to containing 
+     * new page for cloned stack address space  
+     */
     *stack_pte = V2P(new_stack_page) | PTE_P | PTE_W | PTE_U;
     
-    /* returns the new page directory entry reference */
+    /* returns the new page directory entry reference                       */
     return new_pgdir;
 }
+
 
 /* @brief deallocates the cloned user virtaul memory 
  */
@@ -428,18 +437,18 @@ int dealloccloneuvm(pde_t *pgdir, uint size) {
     /* virtual address of the stack frame */
     stack_end = PGROUNDUP(size) - PGSIZE;
     
+    /* free the cloned stack page */
     if((page_address = uva2ka(pgdir, (char *)stack_end)) == 0) {
         return 0;
     }
-    /* free the cloned stack page */
     kfree(page_address);
     
+    /* free the page table containg stack page entry */ 
     page_address = (char *)P2V(PTE_ADDR(pgdir[PDX(stack_end)]));
-    /* free the page table containg stack page */ 
     kfree(page_address);
     
-    page_address = (char *)pgdir;
     /* free the page directory entry */
+    page_address = (char *)pgdir;
     kfree(page_address);
     
     return 1;
