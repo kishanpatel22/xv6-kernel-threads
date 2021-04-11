@@ -256,16 +256,16 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
         np->state = UNUSED;
         return -1;
     }
-    
+
+    // build the handcrafted stack frame for the function 
+    stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
+    stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
+
     // point the sp to the child stack
     np->tstack = child_stack;
     sp = (uint)child_stack;
     sp -= 2 * 4;
  
-    // build the handcrafted stack frame for the function 
-    stack_args[0] = (uint)exit;         // 4 bytes return instruction pointer  
-    stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
-
     // add the return address and argument pointer on the stack 
     if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
         kfree(np->kstack);
@@ -278,14 +278,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     np->tf->eip = (uint)func;           // change start point of execution 
     np->tf->esp = sp;                   // change stack pointer for execution 
     
-    // is the current process is thread parent will be current process parent
-    if(curproc->tgid != -1) {
-        np->parent = curproc->parent;
-    } 
-    // child process parent becomes the current process 
-    else {
-        np->parent = curproc; 
-    }
+    np->parent = curproc;
     
     // copy all the open file descriptors from the file table 
     for(uint i = 0; i < NOFILE; i++) {
@@ -297,13 +290,20 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     
     // name of the child process is same as that of the original process 
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-    
+ 
+    acquire(&ptable.lock);
+   
     // child process state is set to runnable for scheduling
     np->state = RUNNABLE;
     
     // child process formed would be thread, thus pid is same as thread id
     np->tgid = np->pid;
+    
+    // pid of the clone child process is same as the parent process 
+    np->pid = curproc->pid;
 
+    release(&ptable.lock);
+    
     // returns the thread id of the child process 
     return np->tgid;
 }
@@ -320,7 +320,7 @@ exit(void)
   
   if(curproc == initproc)
     panic("init exiting");
-
+  
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
@@ -399,43 +399,48 @@ wait(void)
 }
 
 
-// join the thread with the given threadid with thread leader.
-// join call wait untill the execution of the thread with given threadid
-// join returns 0 in case of successs otherwise returns -1
+// join the thread with the given tgid.
+// join call wait untill the execution of the thread with given tgid.
+// join returns 0 in case of success otherwise returns -1
 int 
-join(int thread_id) {
+join(int tgid) 
+{
     struct proc *leader_thread, *wait_thread, *p;
     struct proc *curproc = myproc();
-    int wait_thread_exits = 0;
+    int wait_thread_exits;
+    
+    // wait for the given process to become zombie process 
+    acquire(&ptable.lock);
     
     // the leader thread is current process 
-    if(curproc->tgid != -1) {
+    if(curproc->tgid == -1) {
         leader_thread = curproc;
-    } 
+    }
     // current process itself can be thread
     else {
         leader_thread = curproc->parent;
     }
     
-    // check if the given thread id is actaully thread 
+    wait_thread_exits = 0;
+    // find the particular thread from the process table 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        if(p->tgid == thread_id) {
+        if(p->tgid == tgid) {
             wait_thread = p; 
             wait_thread_exits = 1;
             break;
         } 
     }
+
     // wait thread doesn't exists or 
     // wait thread doesn't belong the group of thread leader
     if(!wait_thread_exits || wait_thread->parent != leader_thread) {
+        release(&ptable.lock);
         return -1;
     }
 
-    // wait for the given process to become zombie process 
-    acquire(&ptable.lock);
     for(;;) {
         if(wait_thread->state == ZOMBIE) {
-            // Found one, the thread state to be waiting
+            // Found the thread as terminated
             kfree(wait_thread->kstack);
             wait_thread->kstack = 0;
             wait_thread->pgdir = 0;
@@ -447,6 +452,9 @@ join(int thread_id) {
             release(&ptable.lock);
             return 0;
         }
+        // If the thread is still executing thus suspend 
+        // the current process thereby make it sleep 
+        sleep(curproc, &ptable.lock);  
     }
 }
 
@@ -578,7 +586,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+    
   sched();
 
   // Tidy up.

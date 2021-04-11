@@ -22,11 +22,14 @@ int baz(void *args) {
 
 int foo(void *args) {
     struct myargs *temp = (struct myargs *)args;
-    int a = temp->x;
-    int b = temp->y;
-    int c = temp->z;
+    int a, b, c;
+    for(int i = 0; i < 1000000; i++) {
+        a = temp->x;
+        b = temp->y;
+        c = temp->z;
+    }
     printf(1, "a = %d, b = %d, c = %d ... foo is over\n", a, b, c);
-    return a * b;
+    exit();
 }
 
 int main(int argc, char *argv[]) {
@@ -38,9 +41,11 @@ int main(int argc, char *argv[]) {
     void *child_stack = malloc(4096);
     int tgid = clone(foo, child_stack, 0, (void *)&temp);
     join(tgid);
-
-    printf(1, "Now main over\n");
+    
+    printf(1, "Now main over for foo with %d pid\n", tgid);
     free(child_stack);
+
+    // call to exit for the main function
     exit();
 }
 
