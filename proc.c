@@ -115,8 +115,8 @@ found:
   // by default the process is not thread
   p->tgid = -1;
     
-  // thread stack is not present for processes 
-  p->tstack = (void *)0;
+  // initializing the stack for the process 
+  p->tstack = 0;
 
   return p;
 }
@@ -248,22 +248,14 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
 
     // page directory will be same, since child shares the same virtual memory 
     np->pgdir = curproc->pgdir;
-    
-    // child process stack needs to passed as parameter
-    if(!child_stack) {
-        kfree(np->kstack);
-        np->kstack = 0;
-        np->state = UNUSED;
-        return -1;
-    }
+    np->tstack = (uint)child_stack;
 
     // build the handcrafted stack frame for the function 
     stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
     stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
 
     // point the sp to the child stack
-    np->tstack = child_stack;
-    sp = (uint)child_stack;
+    sp = (uint)np->tstack;
     sp -= 2 * 4;
  
     // add the return address and argument pointer on the stack 
@@ -275,7 +267,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     }
     
     *np->tf = *curproc->tf;             // copy the trap frame 
-    np->tf->eip = (uint)func;           // change start point of execution 
+    np->tf->eip = (uint)func;           // change instruction pointer for execution 
     np->tf->esp = sp;                   // change stack pointer for execution 
     
     np->parent = curproc;
@@ -412,14 +404,8 @@ join(int tgid)
     // wait for the given process to become zombie process 
     acquire(&ptable.lock);
     
-    // the leader thread is current process 
-    if(curproc->tgid == -1) {
-        leader_thread = curproc;
-    }
-    // current process itself can be thread
-    else {
-        leader_thread = curproc->parent;
-    }
+    // thread leader is the current process 
+    leader_thread = curproc;
     
     wait_thread_exits = 0;
     // find the particular thread from the process table 
@@ -432,8 +418,12 @@ join(int tgid)
     }
 
     // wait thread doesn't exists or 
+    if(!wait_thread_exits) { 
+        release(&ptable.lock);
+        return -1;
+    }
     // wait thread doesn't belong the group of thread leader
-    if(!wait_thread_exits || wait_thread->parent != leader_thread) {
+    if(wait_thread->parent != leader_thread) {
         release(&ptable.lock);
         return -1;
     }
@@ -448,6 +438,7 @@ join(int tgid)
             wait_thread->parent = 0;
             wait_thread->name[0] = 0;
             wait_thread->killed = 0;
+            wait_thread->tstack = 0;
             wait_thread->state = UNUSED;
             release(&ptable.lock);
             return 0;
@@ -490,7 +481,7 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
+    
       swtch(&(c->scheduler), p->context);
       switchkvm();
 

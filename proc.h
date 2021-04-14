@@ -42,7 +42,7 @@ struct proc {
   enum procstate state;        // Process state
   int pid;                     // Process ID 
   int tgid;                    // Thread ID
-  void *tstack;                // Thread execution stack
+  uint tstack;                 // Thread execution stack virtual address
   struct proc *parent;         // Parent process
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process
