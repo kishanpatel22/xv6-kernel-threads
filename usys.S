@@ -31,3 +31,5 @@ SYSCALL(sleep)
 SYSCALL(uptime)
 SYSCALL(clone)
 SYSCALL(join)
+SYSCALL(hello)
+

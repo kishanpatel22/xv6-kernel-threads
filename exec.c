@@ -18,7 +18,7 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
-
+  
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -67,7 +67,7 @@ exec(char *path, char **argv)
     goto bad;
   clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
   sp = sz;
-
+    
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
     if(argc >= MAXARG)

@@ -245,17 +245,28 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
 
     // size of the child process is same as parent 
     np->sz = curproc->sz;
-
-    // page directory will be same, since child shares the same virtual memory 
-    np->pgdir = curproc->pgdir;
-    np->tstack = (uint)child_stack;
+    
+    // kernel allocates the page for the stack 
+    if(child_stack == 0) {
+        // modify the page directory entry by extending the virtual address 
+        if((np->tstack = cloneuvm(curproc->pgdir, curproc->sz)) == 0) {
+            return -1; 
+        }
+    }
+    
+    // page directory will be same, since child shares virtual memory 
+    np->pgdir = curproc->pgdir; 
 
     // build the handcrafted stack frame for the function 
     stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
     stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
-
+    
     // point the sp to the child stack
-    sp = (uint)np->tstack;
+    if(child_stack != 0) {
+        sp = (uint)child_stack;
+    } else {
+        sp = (uint)np->tstack;
+    }
     sp -= 2 * 4;
  
     // add the return address and argument pointer on the stack 
@@ -270,6 +281,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     np->tf->eip = (uint)func;           // change instruction pointer for execution 
     np->tf->esp = sp;                   // change stack pointer for execution 
     
+    // the cloned process parent 
     np->parent = curproc;
     
     // copy all the open file descriptors from the file table 
@@ -284,7 +296,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
  
     acquire(&ptable.lock);
-   
+    
     // child process state is set to runnable for scheduling
     np->state = RUNNABLE;
     
@@ -295,7 +307,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     np->pid = curproc->pid;
 
     release(&ptable.lock);
-    
+
     // returns the thread id of the child process 
     return np->tgid;
 }
@@ -309,10 +321,10 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-  
+   
   if(curproc == initproc)
     panic("init exiting");
-  
+    
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
@@ -360,7 +372,7 @@ wait(void)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->parent != curproc)
+      if(p->tgid != -1 || p->parent != curproc)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
@@ -370,6 +382,8 @@ wait(void)
         p->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
+        p->tgid = 0;
+        p->tstack = 0;
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
@@ -395,58 +409,48 @@ wait(void)
 // join call wait untill the execution of the thread with given tgid.
 // join returns 0 in case of success otherwise returns -1
 int 
-join(int tgid) 
+join(void) 
 {
-    struct proc *leader_thread, *wait_thread, *p;
-    struct proc *curproc = myproc();
-    int wait_thread_exits;
+    struct proc *p, *curproc = myproc();
+    int wait_thread_exits, tgid;
     
-    // wait for the given process to become zombie process 
+    // wait for the given thread to become zombie process 
     acquire(&ptable.lock);
-    
-    // thread leader is the current process 
-    leader_thread = curproc;
-    
-    wait_thread_exits = 0;
-    // find the particular thread from the process table 
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        if(p->tgid == tgid) {
-            wait_thread = p; 
+    for(;;){
+        // Scan through table looking for exited children.
+        wait_thread_exits = 0;
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+            if(p->tgid == -1 || p->parent != curproc) {
+                continue;
+            }
             wait_thread_exits = 1;
-            break;
-        } 
-    }
-
-    // wait thread doesn't exists or 
-    if(!wait_thread_exits) { 
-        release(&ptable.lock);
-        return -1;
-    }
-    // wait thread doesn't belong the group of thread leader
-    if(wait_thread->parent != leader_thread) {
-        release(&ptable.lock);
-        return -1;
-    }
-
-    for(;;) {
-        if(wait_thread->state == ZOMBIE) {
-            // Found the thread as terminated
-            kfree(wait_thread->kstack);
-            wait_thread->kstack = 0;
-            wait_thread->pgdir = 0;
-            wait_thread->pid = 0;
-            wait_thread->parent = 0;
-            wait_thread->name[0] = 0;
-            wait_thread->killed = 0;
-            wait_thread->tstack = 0;
-            wait_thread->state = UNUSED;
-            release(&ptable.lock);
-            return 0;
+            if(p->state == ZOMBIE) {
+                // Found a thread
+                tgid = p->tgid;
+                freecloneuvm(p->pgdir, p->tstack);
+                kfree(p->kstack);
+                p->pgdir = 0;
+                p->kstack = 0;
+                p->pid = 0;
+                p->tgid = 0;
+                p->tstack = 0;
+                p->parent = 0;
+                p->name[0] = 0;
+                p->killed = 0;
+                p->state = UNUSED;
+                release(&ptable.lock);
+                return tgid;
+            }
         }
-        // If the thread is still executing thus suspend 
-        // the current process thereby make it sleep 
+        // No point waiting if we don't have any thread children.
+        if(!wait_thread_exits || curproc->killed) {
+            release(&ptable.lock);
+            return -1;
+        }
+        // Wait for children to exit.  (See wakeup1 call in proc_exit.)
         sleep(curproc, &ptable.lock);  
-    }
+  }
+ 
 }
 
 
@@ -481,7 +485,7 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-    
+        
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
@@ -547,7 +551,6 @@ forkret(void)
     iinit(ROOTDEV);
     initlog(ROOTDEV);
   }
-
   // Return to "caller", actually trapret (see allocproc).
 }
 

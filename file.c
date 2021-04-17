@@ -118,7 +118,6 @@ int
 filewrite(struct file *f, char *addr, int n)
 {
   int r;
-
   if(f->writable == 0)
     return -1;
   if(f->type == FD_PIPE)

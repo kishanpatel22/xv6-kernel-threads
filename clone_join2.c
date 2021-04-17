@@ -1,19 +1,25 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
+#include "fcntl.h"
 
 // The module basically checks for the clone and join system calls
 // functionality which is added in the xv6 kernel.
 
-#define MAXFIB      (1000000)
-#define MOD         (1000000007)
-#define TSTACK      (4096)
+#define MAXFIB      (10000)
+#define MOD         (100000007)
 
-struct myargs {
+typedef struct myargs {
     int x;
     int y;
     int z;
-};
+} myargs;
+
+int k = 0;
+char *argv[] = { "cat", "temp.txt", 0 };
+
+void print_fun(void) {
+}
 
 int waste_cpu_cycles() {
     int a = 0, b = 1, c;
@@ -21,33 +27,34 @@ int waste_cpu_cycles() {
         c = (a + b) % MOD;
         a = b;
         b = c;
+        k++;
     }
     return c;
 }
 
-int foo(void *args) {
-    printf(1, "I reach here atleast !!\n");
-    struct myargs *foo_temp = (struct myargs *)args;
-    int a, b, c;
-    a = foo_temp->x, b = foo_temp->y, c = foo_temp->z;
-    foo_temp->x++, foo_temp->y++, foo_temp->z++;
+int bar(void *args) {
+    waste_cpu_cycles();
+    exit();
+}
 
-    printf(1, "foo done ... a = %d b = %d c = %d\n", a, b, c);
-    
-    // call to exit foo 
+int foo(void *args) {
+    waste_cpu_cycles();
+    printf(1, "THis works every system call works prefects !! \n");
+    myargs *ptr = (myargs *)args;
+    k = ptr->x + ptr->y + ptr->z;
     exit();
 }
 
 int main(int argc, char *argv[]) {
-    struct myargs temp;
+    k = 0;
+    myargs temp;
     temp.x = 10;
     temp.y = 20;
     temp.z = 30;
-    
-    int foo_tgid = clone(foo, 0, 0, (void *)&temp);
-    int x = join(foo_tgid);
-    printf(1, "main done ... %d with join = %d\n", foo_tgid, x);
+    clone(foo, 0, 0, &temp);
+    join();
 
+    printf(1, "main done ... k = %d\n", k);
     // call to exit for the main function
     exit();
 }

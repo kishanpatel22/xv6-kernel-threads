@@ -54,12 +54,7 @@ int sys_clone(void) {
 // sys join copies the contents from user stack to the kernel memory 
 // sys join calls join which waits for the given thread to be over
 int sys_join(void) {
-    int tgid;
-    // read the thread ID which is passed 
-    if(argint(0, &tgid) == -1) {
-        return -1;
-    } 
-    return join(tgid);
+    return join();
 }
 
 int

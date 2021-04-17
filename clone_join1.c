@@ -46,11 +46,11 @@ int foo(void *args) {
 
     
     void *child_stack = malloc(TSTACK);
-    int bar_tgid = clone(bar, child_stack, 0, args);
+    clone(bar, child_stack, 0, args);
     
     waste_cpu_cycles();
     
-    join(bar_tgid);
+    join();
     printf(1, "foo done ... a = %d b = %d c = %d\n", a, b, c);
     
     // call to exit foo 
@@ -64,9 +64,9 @@ int main(int argc, char *argv[]) {
     temp.z = 30;
     
     void *child_stack = malloc(TSTACK);
-    int foo_tgid = clone(foo, child_stack, 0, (void *)&temp);
-    join(foo_tgid);
-
+    clone(foo, child_stack, 0, (void *)&temp);
+    
+    join();
     printf(1, "main done ...\n");
 
     free(child_stack);

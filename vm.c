@@ -319,7 +319,7 @@ copyuvm(pde_t *pgdir, uint sz)
   pte_t *pte;
   uint pa, i, flags;
   char *mem;
-
+  
   if((d = setupkvm()) == 0)
     return 0;
   for(i = 0; i < sz; i += PGSIZE){
@@ -344,22 +344,100 @@ bad:
   return 0;
 }
 
-// clones any page by creating a new page 
-// and coping the contents byte-by-byte
-char *clonepage(char *page) {
+// cloneuvm simply creates a new stack by extending
+// current virtual address space in the page directory
+// returns starting address of new stack region otherwise 0
+char*
+cloneuvm(pde_t* pgdir, uint size) 
+{
     
-    char *new_page;
-
-    // a new page for directory is created 
-    if((new_page = kalloc()) == 0) {
+    pte_t *pte, *guard_pte, *stack_pte;
+    char *stack_page;
+    char *va = (char *)size;
+    
+    // virtual address of the guard guard page 
+    char *guard_page = (char *)(size - 2 * PGSIZE);
+    
+    // loop for finding unused virtual address in page table 
+    while(va < (char *)KERNBASE) {
+        // check is the page table entry is present or not
+        if((pte = walkpgdir(pgdir, va, 0)) == 0) {
+            break;
+        }
+        // check the page entry already allocated
+        if(!(*pte & PTE_P)) {
+            break;
+        }
+        va += PGSIZE;
+    }
+    // cannot currupt kernel's address for clone process !!
+    if(va == (char *)KERNBASE) {      
+        return 0;
+    }
+    
+    // allocate page table entry for guard if necessary 
+    if((pte = walkpgdir(pgdir, va, 1)) == 0) {
+        return 0;
+    }
+    // the guard page table entry of the original process 
+    if((guard_pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
+        // every process should have a guard page
+        panic("guard page not found");  
+    }
+    
+    // SMART KERNEL : guard page is never reallcoated 
+    // rather page table entry for guard page is shared.
+    *pte = *guard_pte;          
+    
+    // now the new allocation of the stack for the cloned process
+    va += PGSIZE;
+    if((stack_pte = walkpgdir(pgdir, va, 1)) == 0) {
         return 0; 
     }
-
-    // all the entries in the page dir are copied 
-    memmove(new_page, page, PGSIZE);  
+    if((stack_page = kalloc()) == 0) {
+        return 0;
+    }
+    memset(stack_page, 0, PGSIZE);
+    *stack_pte = V2P(stack_page) | PTE_U | PTE_W | PTE_P;
     
-    return new_page;
+    // the base address of the new stack 
+    va += PGSIZE;
+    return va;
 }
+
+
+// frees the cloned process memory 
+// Only stack entry and guard page entry are deleted.
+void
+freecloneuvm(pde_t *pgdir, char *tstack) 
+{
+    pte_t *pte;
+    char *page, *stack_page, *guard_page;
+    
+    // stack allocated by the user-level library / code 
+    // KERNEL has nothing to deal with stack deallocation
+    if(tstack == 0) {
+        return;
+    }
+
+    // free the stack page entry for cloned process 
+    stack_page = tstack - PGSIZE; 
+    if((pte = walkpgdir(pgdir, stack_page, 0)) == 0) {
+        panic("clone process has no stack !!");
+    }
+    page = (char *)V2P(PTE_ADDR(*pte));
+    kfree(page); 
+    *pte = 0;
+     
+    guard_page = tstack - 2 * PGSIZE;
+    // erase the guard page entry of the stack
+    if((pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
+        panic("clone process has no guard page !!");
+    }
+    // earising the guarding page entry
+    *pte = 0;
+}
+
 
 //PAGEBREAK!
 // Map user virtual address to kernel address.

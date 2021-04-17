@@ -111,7 +111,7 @@ int             fork(void);
 // implementation of clone system call
 int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
 // implementation of join system call
-int join(int tgid);
+int join(void);
 
 
 int             growproc(int);
@@ -191,9 +191,8 @@ int             loaduvm(pde_t*, char*, struct inode*, uint, uint);
 pde_t*          copyuvm(pde_t*, uint);
 
 // brief clone memory region execpt the stack frame 
-char*           clonepage(char *);
-pde_t*          cloneuvm(pde_t*, uint);
-int             dealloccloneuvm(pde_t *pgdir, uint size);
+char*           cloneuvm(pde_t* pgdir, uint size);
+void            freecloneuvm(pde_t *pgdir, char *tstack);
 
 void            switchuvm(struct proc*);
 void            switchkvm(void);
