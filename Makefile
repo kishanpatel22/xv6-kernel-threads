@@ -183,6 +183,7 @@ UPROGS=\
 	_zombie\
 	_clone_join1\
 	_clone_join2\
+	_clone_join3\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)

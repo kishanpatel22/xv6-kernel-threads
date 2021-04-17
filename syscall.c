@@ -19,7 +19,7 @@ fetchint(uint addr, int *ip)
 {
   struct proc *curproc = myproc();
   // process stack address space 
-  if(curproc->tgid == -1) {
+  if(curproc->tid == -1) {
     if(addr >= curproc->sz || addr+4 > curproc->sz)
       return -1;
   } 
@@ -41,7 +41,7 @@ fetchstr(uint addr, char **pp)
   char *s, *ep;
   struct proc *curproc = myproc();
   // process stack address space 
-  if(curproc->tgid == -1) {
+  if(curproc->tid == -1) {
     if(addr >= curproc->sz)
       return -1;
   } 
@@ -80,13 +80,14 @@ argptr(int n, char **pp, int size)
   if(argint(n, &i) < 0)
     return -1;
   // process stack address space 
-  if(curproc->tgid == -1) {
-    if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
+  if(curproc->tid == -1) {
+    if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz) {
       return -1;
+    }
   }
   // thread stack address space 
   else {
-    if(size < 0 || (uint)i >= (uint)curproc->tstack || (uint)i + size > (uint)curproc->tstack) 
+    if(size < 0 || (uint)i >= (uint)curproc->tstack || (uint)i+size > (uint)curproc->tstack) 
       return -1;
   }
   *pp = (char*)i;
@@ -129,7 +130,6 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_clone(void);
 extern int sys_join(void);
-extern int sys_hello(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -155,7 +155,6 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_clone]   sys_clone,
 [SYS_join]    sys_join,
-[SYS_hello]   sys_hello
 };
 
 void

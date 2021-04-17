@@ -5,7 +5,7 @@
 // The module basically checks for the clone and join system calls
 // functionality which is added in the xv6 kernel.
 
-#define MAXFIB      (1000000)
+#define MAXFIB      (1000)
 #define MOD         (1000000007)
 #define TSTACK      (4096)
 
@@ -15,14 +15,18 @@ struct myargs {
     int z;
 };
 
+int k = 0;
+
+/* O(n^3) algorithm to do nothing */
 int waste_cpu_cycles() {
-    int a = 0, b = 1, c;
     for(int i = 0; i < MAXFIB; i++) {
-        c = (a + b) % MOD;
-        a = b;
-        b = c;
+        for(int j = 0; j < MAXFIB; j++) {
+            for(int k = 0; k < MAXFIB; k++) {
+                ; 
+            }
+        }
     }
-    return c;
+    return 0;
 }
 
 int bar(void *args) {
@@ -31,9 +35,9 @@ int bar(void *args) {
     a = bar_temp->x, b = bar_temp->y, c = bar_temp->z;
     
     waste_cpu_cycles();
+    k += + a + b + c;
 
-    printf(1, "bar done ... a = %d b = %d c = %d\n", a, b, c);
-
+    printf(1, "bar done ...\n");
     // call to exit bar
     exit();
 }
@@ -42,17 +46,17 @@ int foo(void *args) {
     struct myargs *foo_temp = (struct myargs *)args;
     int a, b, c;
     a = foo_temp->x, b = foo_temp->y, c = foo_temp->z;
-    foo_temp->x++, foo_temp->y++, foo_temp->z++;
 
-    
     void *child_stack = malloc(TSTACK);
-    clone(bar, child_stack, 0, args);
-    
+    int tid = clone(bar, (char *)child_stack + TSTACK, 0, args);
     waste_cpu_cycles();
+    join(tid);
+    free(child_stack);
     
-    join();
-    printf(1, "foo done ... a = %d b = %d c = %d\n", a, b, c);
-    
+    // update global variable 
+    k += a + b + c;
+
+    printf(1, "foo done ...\n");
     // call to exit foo 
     exit();
 }
@@ -64,14 +68,13 @@ int main(int argc, char *argv[]) {
     temp.z = 30;
     
     void *child_stack = malloc(TSTACK);
-    clone(foo, child_stack, 0, (void *)&temp);
-    
-    join();
-    printf(1, "main done ...\n");
-
+    int tid = clone(foo, (char *)child_stack + TSTACK, 0, (void *)&temp);
+    join(tid);
     free(child_stack);
 
+    printf(1, "main done ... k = %d\n", k);
     // call to exit for the main function
     exit();
 }
+
 

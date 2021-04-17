@@ -113,11 +113,14 @@ found:
   p->context->eip = (uint)forkret;
     
   // by default the process is not thread
-  p->tgid = -1;
-    
+  p->tid = -1;
+  
   // initializing the stack for the process 
   p->tstack = 0;
 
+  // the stack is not allocated by the kernel
+  p->tstackalloc = 0;
+  
   return p;
 }
 
@@ -241,7 +244,9 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     
     // modify or duplicate all the fileds of struct proc accordingly 
     // to create a child process which is clone of the current process 
-    np = allocproc();
+    if((np = allocproc()) == 0) {
+        return -1;
+    }
 
     // size of the child process is same as parent 
     np->sz = curproc->sz;
@@ -252,6 +257,10 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
         if((np->tstack = cloneuvm(curproc->pgdir, curproc->sz)) == 0) {
             return -1; 
         }
+        // the stack is allocated by the kernel 
+        np->tstackalloc = 1;
+    } else {
+        np->tstack = (char *)child_stack;
     }
     
     // page directory will be same, since child shares virtual memory 
@@ -262,11 +271,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
     
     // point the sp to the child stack
-    if(child_stack != 0) {
-        sp = (uint)child_stack;
-    } else {
-        sp = (uint)np->tstack;
-    }
+    sp = (uint)np->tstack;
     sp -= 2 * 4;
  
     // add the return address and argument pointer on the stack 
@@ -281,8 +286,13 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     np->tf->eip = (uint)func;           // change instruction pointer for execution 
     np->tf->esp = sp;                   // change stack pointer for execution 
     
-    // the cloned process parent 
-    np->parent = curproc;
+    if(curproc->tid == -1) {
+        // parent is the thread group leader (main process)
+        np->parent = curproc;
+    } else {
+        // parent itself is a thread 
+        np->parent = curproc->parent;
+    }
     
     // copy all the open file descriptors from the file table 
     for(uint i = 0; i < NOFILE; i++) {
@@ -301,7 +311,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     np->state = RUNNABLE;
     
     // child process formed would be thread, thus pid is same as thread id
-    np->tgid = np->pid;
+    np->tid = np->pid;
     
     // pid of the clone child process is same as the parent process 
     np->pid = curproc->pid;
@@ -309,7 +319,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     release(&ptable.lock);
 
     // returns the thread id of the child process 
-    return np->tgid;
+    return np->tid;
 }
 
 // Exit the current process.  Does not return.
@@ -342,7 +352,7 @@ exit(void)
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
-
+    
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
@@ -372,7 +382,7 @@ wait(void)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->tgid != -1 || p->parent != curproc)
+      if(p->tid != -1 || p->parent != curproc)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
@@ -382,7 +392,7 @@ wait(void)
         p->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
-        p->tgid = 0;
+        p->tid = 0;
         p->tstack = 0;
         p->parent = 0;
         p->name[0] = 0;
@@ -405,54 +415,64 @@ wait(void)
 }
 
 
-// join the thread with the given tgid.
-// join call wait untill the execution of the thread with given tgid.
+// join i.e wait untill the execution of the thread with the given tid 
 // join returns 0 in case of success otherwise returns -1
+// Note that thread to be joined and thread calling join must belong to same group
 int 
-join(void) 
+join(int tid) 
 {
-    struct proc *p, *curproc = myproc();
-    int wait_thread_exits, tgid;
-    
-    // wait for the given thread to become zombie process 
-    acquire(&ptable.lock);
-    for(;;){
-        // Scan through table looking for exited children.
-        wait_thread_exits = 0;
-        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-            if(p->tgid == -1 || p->parent != curproc) {
-                continue;
-            }
-            wait_thread_exits = 1;
-            if(p->state == ZOMBIE) {
-                // Found a thread
-                tgid = p->tgid;
-                freecloneuvm(p->pgdir, p->tstack);
-                kfree(p->kstack);
-                p->pgdir = 0;
-                p->kstack = 0;
-                p->pid = 0;
-                p->tgid = 0;
-                p->tstack = 0;
-                p->parent = 0;
-                p->name[0] = 0;
-                p->killed = 0;
-                p->state = UNUSED;
-                release(&ptable.lock);
-                return tgid;
-            }
-        }
-        // No point waiting if we don't have any thread children.
-        if(!wait_thread_exits || curproc->killed) {
-            release(&ptable.lock);
-            return -1;
-        }
-        // Wait for children to exit.  (See wakeup1 call in proc_exit.)
-        sleep(curproc, &ptable.lock);  
-  }
- 
-}
+    struct proc *p, *curproc = myproc(), *tleader;
+    int join_thread_exits;
 
+    acquire(&ptable.lock);
+    
+    // thread leader is current process 
+    if(curproc->tid == -1) {
+        tleader = curproc;
+    } 
+    // thread leader is parent process 
+    else {
+        tleader = curproc->parent;
+    }
+
+    join_thread_exits = 0;
+    // check if the thread joining the tid both belong to same thread group
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->tid == tid && p->parent == tleader) {
+            join_thread_exits = 1; 
+            break;
+        } 
+    }
+
+    // join thread either doesn't exists or it doesn't belong to same group
+    if(!join_thread_exits) {
+        release(&ptable.lock);
+        return -1;
+    }
+    
+    // suspend execution of current thread and wait for completion of tid thread
+    for(;;) {
+        if(p->state == ZOMBIE) {
+            // Found the thread 
+            kfree(p->kstack);
+            p->kstack = 0;
+            if(p->tstackalloc) {
+                freecloneuvm(p->pgdir, p->tstack);
+            }
+            p->pid = 0;
+            p->tid = 0;
+            p->tstack = 0;
+            p->parent = 0;
+            p->name[0] = 0;
+            p->killed = 0;
+            p->state = UNUSED;
+            release(&ptable.lock);
+            return 0;
+        } 
+        // Wait for thread to complete (See wakeup1 call in proc_exit.)
+        sleep(tleader, &ptable.lock);  
+    }     
+}
 
 //PAGEBREAK: 42
 // Per-CPU process scheduler.

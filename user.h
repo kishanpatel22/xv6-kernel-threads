@@ -27,8 +27,7 @@ int uptime(void);
 // implementation of clone system call
 int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
 // implementation of join system call
-int join(void);
-void hello(void);
+int join(int tid);
 
 // ulib.c
 int stat(const char*, struct stat*);

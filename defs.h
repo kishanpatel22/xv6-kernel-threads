@@ -109,9 +109,9 @@ int             fork(void);
 
 
 // implementation of clone system call
-int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
+int             clone(int (*func)(void *args), void *child_stack, int flags, void *args);
 // implementation of join system call
-int join(void);
+int             join(int tid);
 
 
 int             growproc(int);

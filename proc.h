@@ -41,8 +41,9 @@ struct proc {
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
   int pid;                     // Process ID 
-  int tgid;                    // Thread ID
+  int tid;                     // Thread ID
   char *tstack;                // Thread execution stack virtual address 
+  int tstackalloc;             // if non-zero, stack allocated by kernel 
   struct proc *parent;         // Parent process
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process

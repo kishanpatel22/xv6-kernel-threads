@@ -26,14 +26,14 @@ int sys_clone(void) {
     int (*func)(void *);
     char *child_stack, *args;
     int flags;
-    
+
     // read the function pointer 
-    if(argptr(0, (char **)&(func), 4) == -1) {
+    if(argptr(0, (char **)&(func), 0) == -1) {
         return -1;
     }
     
     // read the child stack address 
-    if(argptr(1, &child_stack, 4) == -1) {
+    if(argint(1, (int *)&child_stack) == -1) {
         return -1;
     }
     
@@ -43,7 +43,7 @@ int sys_clone(void) {
     }
     
     // read the address of argument 
-    if(argptr(3, &args, 4) == -1) {
+    if(argptr(3, &args, 0) == -1) {
         return -1;
     }
 
@@ -54,7 +54,13 @@ int sys_clone(void) {
 // sys join copies the contents from user stack to the kernel memory 
 // sys join calls join which waits for the given thread to be over
 int sys_join(void) {
-    return join();
+
+    int tid;
+    // read the thread id to be joined 
+    if(argint(0, &tid) == -1) {
+        return -1;
+    }
+    return join(tid);
 }
 
 int

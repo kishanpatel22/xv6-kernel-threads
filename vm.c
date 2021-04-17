@@ -414,12 +414,6 @@ freecloneuvm(pde_t *pgdir, char *tstack)
     pte_t *pte;
     char *page, *stack_page, *guard_page;
     
-    // stack allocated by the user-level library / code 
-    // KERNEL has nothing to deal with stack deallocation
-    if(tstack == 0) {
-        return;
-    }
-
     // free the stack page entry for cloned process 
     stack_page = tstack - PGSIZE; 
     if((pte = walkpgdir(pgdir, stack_page, 0)) == 0) {
