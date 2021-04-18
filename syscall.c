@@ -20,14 +20,15 @@ fetchint(uint addr, int *ip)
   struct proc *curproc = myproc();
   // process stack address space 
   if(curproc->tid == -1) {
-    if(addr >= curproc->sz || addr+4 > curproc->sz)
+    if(addr >= (uint)curproc->sz || addr+4 > (uint)curproc->sz)
       return -1;
   } 
   // thread stack address space 
   else {
-    if(addr >= (uint)curproc->tstack || addr+4 >= (uint)curproc->tstack)
+    if(addr >= (uint)curproc->tstack || addr+4 > (uint)curproc->tstack)
       return -1;
   }
+
   *ip = *(int*)(addr);
   return 0;
 }
@@ -42,14 +43,13 @@ fetchstr(uint addr, char **pp)
   struct proc *curproc = myproc();
   // process stack address space 
   if(curproc->tid == -1) {
-    if(addr >= curproc->sz)
+    if(addr >= (uint)curproc->sz)
       return -1;
   } 
-  // thread stack address space 
+  // thread stack address space  
   else {
-    if(addr >= (uint)curproc->tstack) {
-      return -1; 
-    }
+    if(addr >= (uint)curproc->tstack)
+      return -1;
   }
 
   *pp = (char*)addr;
@@ -81,10 +81,9 @@ argptr(int n, char **pp, int size)
     return -1;
   // process stack address space 
   if(curproc->tid == -1) {
-    if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz) {
+    if(size < 0 || (uint)i >= (uint)curproc->sz || (uint)i + size > (uint)curproc->sz)
       return -1;
-    }
-  }
+  } 
   // thread stack address space 
   else {
     if(size < 0 || (uint)i >= (uint)curproc->tstack || (uint)i+size > (uint)curproc->tstack) 

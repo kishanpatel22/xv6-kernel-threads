@@ -348,30 +348,15 @@ bad:
 // current virtual address space in the page directory
 // returns starting address of new stack region otherwise 0
 char*
-cloneuvm(pde_t* pgdir, uint size) 
+cloneuvm(pde_t* pgdir, uint size, char *guard_page) 
 {
     
     pte_t *pte, *guard_pte, *stack_pte;
     char *stack_page;
     char *va = (char *)size;
     
-    // virtual address of the guard guard page 
-    char *guard_page = (char *)(size - 2 * PGSIZE);
-    
-    // loop for finding unused virtual address in page table 
-    while(va < (char *)KERNBASE) {
-        // check is the page table entry is present or not
-        if((pte = walkpgdir(pgdir, va, 0)) == 0) {
-            break;
-        }
-        // check the page entry already allocated
-        if(!(*pte & PTE_P)) {
-            break;
-        }
-        va += PGSIZE;
-    }
-    // cannot currupt kernel's address for clone process !!
-    if(va == (char *)KERNBASE) {      
+    // cannot currupt kernel's address for cloning process !!
+    if(va >= (char *)KERNBASE) {      
         return 0;
     }
     

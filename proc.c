@@ -118,9 +118,9 @@ found:
   // initializing the stack for the process 
   p->tstack = 0;
 
-  // the stack is not allocated by the kernel
+  // the stack is not allocated by kernel
   p->tstackalloc = 0;
-  
+
   return p;
 }
 
@@ -147,6 +147,9 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
+  
+  // thread stack of the init process 
+  p->tstack = (char *)PGSIZE;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -169,8 +172,9 @@ growproc(int n)
 {
   uint sz;
   struct proc *curproc = myproc();
-
-  sz = curproc->sz;
+    
+  // page directory is shared but actual size of process is with group leader
+  sz = THREAD_LEADER(curproc)->sz;
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -179,6 +183,8 @@ growproc(int n)
       return -1;
   }
   curproc->sz = sz;
+  // update the thread leader size 
+  THREAD_LEADER(curproc)->sz = sz;
   switchuvm(curproc);
   return 0;
 }
@@ -209,6 +215,9 @@ fork(void)
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
+  // TODO: change this in thread implementation : thread tstack 
+  np->tstack = (char *)curproc->sz;
+  
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -239,7 +248,8 @@ int
 clone(int (*func)(void *args), void *child_stack, int flags, void *args) 
 {
     struct proc *np;
-    struct proc *curproc = myproc();
+    struct proc *curproc = myproc(), *tleader;
+    char *guard_page;
     uint sp, stack_args[2];
     
     // modify or duplicate all the fileds of struct proc accordingly 
@@ -247,24 +257,37 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     if((np = allocproc()) == 0) {
         return -1;
     }
-
-    // size of the child process is same as parent 
-    np->sz = curproc->sz;
     
+    // thread leader in the group of threads executed with same pid
+    tleader = THREAD_LEADER(curproc);
+ 
     // kernel allocates the page for the stack 
     if(child_stack == 0) {
+
+        // guard page of the group leader thread 
+        guard_page = tleader->tstack - 2 * PGSIZE;
+
         // modify the page directory entry by extending the virtual address 
-        if((np->tstack = cloneuvm(curproc->pgdir, curproc->sz)) == 0) {
+        if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
             return -1; 
         }
+        // update the size of the thread leader 
+        tleader->sz = (uint)np->tstack;
+
         // the stack is allocated by the kernel 
         np->tstackalloc = 1;
-    } else {
+
+    } 
+    // user allocated stack for children
+    else {
         np->tstack = (char *)child_stack;
     }
     
     // page directory will be same, since child shares virtual memory 
     np->pgdir = curproc->pgdir; 
+    
+    // size of the child clone is same as parent 
+    np->sz = tleader->sz;
 
     // build the handcrafted stack frame for the function 
     stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  

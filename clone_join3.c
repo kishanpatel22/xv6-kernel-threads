@@ -3,12 +3,11 @@
 #include "user.h"
 #include "fcntl.h"
 
-// the purpose of the module is to check for peer to peer relationship among
+// the test case is to check for peer to peer relationship among
 // the threads. Note any thread created can be joined execept the group leader 
-// thread, which is the parent process.
+// thread, which is the parent process (main thread)
 
 #define MAXN        (5)
-#define MOD         (100000007)
 
 typedef struct myargs {
     int x;
@@ -37,7 +36,6 @@ int io_time_waste(char *s) {
 int bar(void *args) {
 
     io_time_waste("bar.txt");
-    
     // bar updating global varibale
     k = k + 10;
     printf(1, "bar done ... \n");
@@ -69,6 +67,5 @@ int main(int argc, char *argv[]) {
     // call to exit for the main function
     exit();
 }
-
 
 

@@ -28,7 +28,7 @@ int sys_clone(void) {
     int flags;
 
     // read the function pointer 
-    if(argptr(0, (char **)&(func), 0) == -1) {
+    if(argptr(0, (char **)&func, 0) == -1) {
         return -1;
     }
     
@@ -46,7 +46,13 @@ int sys_clone(void) {
     if(argptr(3, &args, 0) == -1) {
         return -1;
     }
-
+    
+    // clone system call supports stack address space which are one page alligned 
+    if(THREAD_LEADER(myproc())->sz <= (uint)child_stack && 
+       THREAD_LEADER(myproc())->sz < (uint)child_stack - PGSIZE) {
+        return -1;
+    }
+    
     // call to actual kernel clone function 
     return clone(func, (void *)child_stack, flags, (void *)args);
 }
@@ -100,7 +106,7 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
+  addr = THREAD_LEADER(myproc())->sz;
   if(growproc(n) < 0)
     return -1;
   return addr;

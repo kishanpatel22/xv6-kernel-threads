@@ -191,7 +191,7 @@ int             loaduvm(pde_t*, char*, struct inode*, uint, uint);
 pde_t*          copyuvm(pde_t*, uint);
 
 // brief clone memory region execpt the stack frame 
-char*           cloneuvm(pde_t* pgdir, uint size);
+char*           cloneuvm(pde_t* pgdir, uint size, char *guard_page);
 void            freecloneuvm(pde_t *pgdir, char *tstack);
 
 void            switchuvm(struct proc*);

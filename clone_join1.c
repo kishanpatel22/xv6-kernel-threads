@@ -2,11 +2,9 @@
 #include "stat.h"
 #include "user.h"
 
-// The module basically checks for the clone and join system calls
-// functionality which is added in the xv6 kernel.
+// module contains the basic test of clone and join system calls to create threads
 
 #define MAXFIB      (1000)
-#define MOD         (1000000007)
 #define TSTACK      (4096)
 
 struct myargs {
@@ -33,9 +31,10 @@ int bar(void *args) {
     struct myargs *bar_temp = (struct myargs *)args;
     int a, b, c;
     a = bar_temp->x, b = bar_temp->y, c = bar_temp->z;
-    
+
     waste_cpu_cycles();
-    k += + a + b + c;
+    // update the global variable 
+    k += a + b + c;
 
     printf(1, "bar done ...\n");
     // call to exit bar

@@ -3,11 +3,11 @@
 #include "user.h"
 #include "fcntl.h"
 
-// The module basically checks for the clone and join system calls
-// functionality which is added in the xv6 kernel.
+// the test case is to check for the kernel functionality of extending the
+// stack region for the creation of thread. Note the clone system call 
+// handles kernel allocation of stack, if argument to stack is 0
 
 #define MAXN        (5)
-#define MOD         (100000007)
 
 typedef struct myargs {
     int x;
