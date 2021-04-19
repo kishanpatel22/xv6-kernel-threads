@@ -209,6 +209,68 @@ basic_nested_clone_join()
 
 // ===========================================================================
 
+// Hardy-Ramanujan number 
+#define SECRET_KEY          (1729)          
+#define MAX_CHILD_THREADS   (3)
+#define CHECK(key)          (key == MAX_CHILD_THREADS * SECRET_KEY)
+
+int __key__;
+
+int 
+wait_join_func(void *agrs) 
+{
+    sleep(5); 
+    __key__ += SECRET_KEY;
+    exit();
+} 
+
+// join waits for a paritcular thread to finish, wait must wait for "any" 
+// child process to finish. Note child process will be suspended uptill
+// execution of all the threads which are present in thread group of child.
+// TEST CASE : check if wait returns only after all joins join
+//             globals being shared in fork and child threads 
+int 
+wait_join_test() 
+{
+    
+    int pid, wpid;
+    int tids[MAX_CHILD_THREADS];
+    void *child_stacks[MAX_CHILD_THREADS];
+
+    // create a child process 
+    pid = fork();
+    if(pid == 0){
+        // child process creates few threads
+        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
+            child_stacks[i] = malloc(TSTACK_SIZE);
+            tids[i] = clone(wait_join_func, child_stacks[i] + TSTACK_SIZE, 0, 0);
+        } 
+        // child process waits for all threads to be joined 
+        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
+            join(tids[i]);
+            free(child_stacks[i]);
+        }
+        // were the threads really working 
+        if(!CHECK(__key__)) {
+            eprintf("wait join test\n"); 
+        }
+        exit();
+    } 
+    
+    // parent process should for child process + child threads to finish
+    wpid = wait();
+    if(wpid == pid) {
+        sprintf("wait join test");
+    } else {
+        eprintf("wait join test");
+    }
+
+    // sucess 
+    return 0;
+}
+
+// ===========================================================================
+
 #define MAX_ITERATIONS   (10000)
 #define MAX_THREAD_POOL  (5)
 
@@ -325,93 +387,37 @@ thread_peer_relationship()
 
 // ===========================================================================
 
-// Hardy-Ramanujan number 
-#define SECRET_KEY          (1729)          
-#define MAX_CHILD_THREADS   (3)
-#define CHECK(key)          (key == MAX_CHILD_THREADS * SECRET_KEY)
-
-int __key__;
-
-int 
-wait_join_func(void *agrs) 
-{
-    sleep(5); 
-    __key__ += SECRET_KEY;
-    exit();
-} 
-
-// join waits for a paritcular thread to finish, wait must wait for "any" 
-// child process to finish. Note child process will be suspended uptill
-// execution of all the threads which are present in thread group of child.
-// TEST CASE : check if wait returns only after all joins join
-int wait_join_test() {
-    
-    int pid, wpid;
-    int tids[MAX_CHILD_THREADS];
-
-    // create a child process 
-    pid = fork();
-    if(pid == 0){
-        // child process creates few threads
-        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
-            tids[i] = clone(wait_join_func, 0, 0, 0);
-        } 
-        // child process waits for all threads to be joined 
-        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
-            join(tids[i]);
-        }
-        // were the threads really working 
-        if(!CHECK(__key__)) {
-            eprintf("wait join test\n"); 
-        }
-        exit();
-    } 
-    
-    // parent process should for child process + child threads to finish
-    wpid = wait();
-    if(wpid == pid) {
-        sprintf("wait join test");
-    } else {
-        eprintf("wait join test");
-    }
-
-    // sucess 
-    return 0;
-}
-
-// ===========================================================================
-
-int fork_test() {
-     
-    // success 
-    return 0;
-}
-
-// ===========================================================================
-
 char *argv[] = {"echo", "hello"};
 
-int exec_func(void *args) {
+int 
+exec_func(void *args) 
+{
     exec(argv[0], argv);
     eprintf("basic exec test");
     exit(); 
 }
 
-int not_exec_func(void *agrs) {
+int 
+not_exec_func(void *agrs) 
+{
     // thread simply sleeps
     sleep(10);
     exit();
 }
 
-int basic_exec_test() {
-    int pid;
-    int exec_tid;
+int
+basic_exec_test() 
+{
+    int pid, exec_tid;
+    void *child_stack;
     
     pid = fork();
     // child creates thread and one of thread does exec
     if(pid == 0) {
-        exec_tid      = clone(exec_func, 0, 0, 0);
+        child_stack = malloc(TSTACK_SIZE);
+        exec_tid = clone(exec_func, child_stack + TSTACK_SIZE, 0, 0);
         join(exec_tid);
+        free(child_stack);
     }
     // parent simply waits for the child
     else {
@@ -432,14 +438,14 @@ int basic_exec_test() {
 int
 main(int argc, char *argv[])
 {
-    //basic_clone_join();                 // simple clone and join system call
-    //basic_nested_clone_join();          // nested clone and join system call
+    basic_clone_join();                 // simple clone and join system call
+    basic_nested_clone_join();          // nested clone and join system call
+    wait_join_test();                   // join and wait both work correctly 
     kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
     thread_peer_relationship();         // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    //fork_test();                        // fork test for threads
+    
+    // having issue with this test  
     //basic_exec_test();                  // exec test for threads
-
     exit();
 }
 
