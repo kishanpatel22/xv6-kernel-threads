@@ -195,25 +195,35 @@ fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct proc *curproc = myproc();
+  struct proc *curproc = myproc(), *tleader;
 
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
-  // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
+    
+  // thread leader in the group
+  tleader = THREAD_LEADER(curproc);
+    
+  // Copy process state from proc. 
+  //(current implementation all threads are being copied
+  if(curproc->tid == -1) {
+    if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
+    }
   }
-  np->sz = curproc->sz;
-  np->parent = curproc;
-  *np->tf = *curproc->tf;
+  // size same as thread leader
+  np->sz = tleader->sz;
+  // parent is the thread leader 
+  np->parent = tleader;
 
-  // TODO: change this in thread implementation : thread tstack 
-  np->tstack = (char *)curproc->sz;
+  // trap frame is same as current thread
+  *np->tf = *curproc->tf;             
+  // the execution stack of the threads
+  np->tstack = curproc->tstack;
   
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -399,13 +409,13 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
-  
+
   acquire(&ptable.lock);
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->tid != -1 || p->parent != curproc)
+      if(THREAD_LEADER(p)->parent != curproc)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
@@ -413,7 +423,11 @@ wait(void)
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
-        freevm(p->pgdir);
+        if(p->tid == -1){
+            freevm(p->pgdir);
+        } else if(p->tstackalloc){
+            freecloneuvm(p->pgdir, p->tstack);
+        }
         p->pid = 0;
         p->tid = 0;
         p->tstack = 0;

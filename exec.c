@@ -25,7 +25,8 @@ exec(char *path, char **argv)
   tleader = THREAD_LEADER(curproc);
   // thread group leader parent  
   tleader_parent = tleader->parent;
-
+ 
+  acquire(&ptable.lock);
   // make all the threads in group to die (all process with same pid will be killed)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == curproc->pid && p != curproc){
@@ -37,11 +38,11 @@ exec(char *path, char **argv)
       }
     }
   }
-  
-  // wait for the threads in the group to die
-  // similar to join but happens after killing threads
+  release(&ptable.lock);
   
   acquire(&ptable.lock);
+  // wait for the threads in the group to die
+  // similar to join but happens after killing threads
   for(;;) {
     thread_exits_in_group = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
@@ -68,17 +69,16 @@ exec(char *path, char **argv)
     }
     // there are no threads in group to wait for 
     if(!thread_exits_in_group) {
-        release(&ptable.lock);
         break;
     }
     // sleep untill the excecution 
     sleep(tleader, &ptable.lock);
   }
-  
   // free the stack of thread if it was allocated by kernel
   if(curproc->tstackalloc) {
     freecloneuvm(curproc->pgdir, curproc->tstack);
   }
+  release(&ptable.lock);
  
   begin_op();
 
@@ -153,7 +153,10 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
-  
+   
+  // the new process is attached earlier group leaders parent 
+  curproc->parent = tleader_parent;
+
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
@@ -162,8 +165,6 @@ exec(char *path, char **argv)
   curproc->tstack = (char *)curproc->sz;
   // thread doing exec is now new process 
   curproc->tid = -1;
-  // the new process is attached earlier group leaders parent 
-  curproc->parent = tleader_parent;
   // stack is not allocated since it's not thread
   curproc->tstackalloc = 0;
   curproc->tf->eip = elf.entry;  // main
