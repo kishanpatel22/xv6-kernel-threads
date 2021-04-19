@@ -209,9 +209,10 @@ basic_nested_clone_join()
 
 // ===========================================================================
 
-#define MAX_ITERATIONS  (10000)
+#define MAX_ITERATIONS   (10000)
+#define MAX_THREAD_POOL  (5)
 
-int increament_global(void *args) {
+int incr_global(void *args) {
     for(int i = 0; i < MAX_ITERATIONS; i++) {
         global_var++;
     }
@@ -227,19 +228,19 @@ int
 kernel_clone_stack_alloc() 
 {
     // thread pool for storing thread ids
-    int thread_pool[5];
+    int thread_pool[MAX_THREAD_POOL];
     // initializing global variables 
     global_var = 0;
     
     // create threads and execution begins concurrently 
-    for(int i = 0; i < 5; i++) {
-        thread_pool[i] = clone(increament_global, 0, 0, 0);
+    for(int i = 0; i < MAX_THREAD_POOL; i++) {
+        thread_pool[i] = clone(incr_global, 0, 0, 0);
     }
     // join all the threads i.e. wait for its execution
-    for(int i = 0; i < 5; i++) {
+    for(int i = 0; i < MAX_THREAD_POOL; i++) {
         join(thread_pool[i]);
     }
-    if(global_var == 5 * MAX_ITERATIONS) {
+    if(global_var == MAX_THREAD_POOL * MAX_ITERATIONS) {
         sprintf("kernel clone stack allocation");
     } else {
         eprintf("kernel clone stack allocation");
@@ -322,33 +323,64 @@ thread_peer_relationship()
 
 int fork_test() {
      
-    
     // success 
     return 0;
 }
 
+// ===========================================================================
 
-int exec_test() {
-   
+char *argv[] = {"echo", "hello"};
+
+int exec_func(void *args) {
+    exec(argv[0], argv);
+    eprintf("basic exec test");
+    exit(); 
+}
+
+int not_exec_func(void *agrs) {
+    // thread simply sleeps
+    sleep(10);
+    exit();
+}
+
+int basic_exec_test() {
+
+    int pid;
+    int exec_tid;
+    printf(1, "parent process pid = %d\n", getpid());
+    pid = fork();
+    // child creates thread and one of thread does exec
+    if(pid == 0) {
+        exec_tid      = clone(exec_func, 0, 0, 0);
+        join(exec_tid);
+    }
+    // parent simply waits for the child
+    else {
+        int cpid = wait();
+        printf(1, "cpid = %d pid = %d\n", cpid, pid);
+        if(cpid == pid) {
+            sprintf("basic exec test\n");
+        } else {
+            eprintf("basic exec test\n");
+        }
+    }
 
     // success 
     return 0;
 }
-
 
 // ===========================================================================
 
 int
 main(int argc, char *argv[])
 {
-    //basic_clone_join();                 // simple clone and join system call
-    //basic_nested_clone_join();          // nested clone and join system call
-    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    //thread_peer_relationship();         // threads sharing peer to peer relationship
-    fork_test();                        // fork test for threads
-    exec_test();                        // exec test for threads
+    basic_clone_join();                 // simple clone and join system call
+    basic_nested_clone_join();          // nested clone and join system call
+    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    thread_peer_relationship();         // threads sharing peer to peer relationship
+    //fork_test();                        // fork test for threads
+    //basic_exec_test();                  // exec test for threads
 
     exit();
 }
-
 

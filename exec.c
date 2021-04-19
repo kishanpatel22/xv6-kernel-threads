@@ -18,9 +18,14 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc(), *p;
+  struct proc *curproc = myproc(), *p, *tleader, *tleader_parent;
   int thread_exits_in_group;
   
+  // thread group leader 
+  tleader = THREAD_LEADER(curproc);
+  // thread group leader parent  
+  tleader_parent = tleader->parent;
+
   // make all the threads in group to die (all process with same pid will be killed)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == curproc->pid && p != curproc){
@@ -32,22 +37,49 @@ exec(char *path, char **argv)
       }
     }
   }
-
-  
-  thread_exits_in_group = 0;
   
   // wait for the threads in the group to die
+  // similar to join but happens after killing threads
+  
+  acquire(&ptable.lock);
   for(;;) {
+    thread_exits_in_group = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->pid == curproc->pid && p != curproc && p->state != ZOMBIE)
-        thread_exits_in_group = 1; 
+      // the thread has not died
+      if(p->pid == curproc->pid && p != curproc && p->state != ZOMBIE){
+        thread_exits_in_group = 1;
+        break;
+      } else if(p->pid == curproc->pid && p != curproc && p->state == ZOMBIE){
+        kfree(p->kstack);
+        p->kstack = 0;
+        if(p->tstackalloc) {
+            freecloneuvm(p->pgdir, p->tstack);
+        }
+        // page directory is not deallocated here 
+        p->pgdir = 0; 
+        p->pid = 0;
+        p->tid = 0;
+        p->tstack = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+      }
     }
+    // there are no threads in group to wait for 
     if(!thread_exits_in_group) {
+        release(&ptable.lock);
         break;
     }
-    sleep(THREAD_LEADER(curproc), &ptable.lock);
+    // sleep untill the excecution 
+    sleep(tleader, &ptable.lock);
   }
-
+  
+  // free the stack of thread if it was allocated by kernel
+  if(curproc->tstackalloc) {
+    freecloneuvm(curproc->pgdir, curproc->tstack);
+  }
+ 
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -126,8 +158,14 @@ exec(char *path, char **argv)
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
   curproc->sz = sz;
-  // tstack page of the leader thread
+  // thread stack page of new process 
   curproc->tstack = (char *)curproc->sz;
+  // thread doing exec is now new process 
+  curproc->tid = -1;
+  // the new process is attached earlier group leaders parent 
+  curproc->parent = tleader_parent;
+  // stack is not allocated since it's not thread
+  curproc->tstackalloc = 0;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
   switchuvm(curproc);

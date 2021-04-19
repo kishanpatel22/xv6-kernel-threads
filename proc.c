@@ -7,7 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
-// external varaible
+// ptable external varaible 
 struct table ptable;
 
 static struct proc *initproc;
@@ -201,7 +201,6 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -280,7 +279,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     else {
         np->tstack = (char *)child_stack;
     }
-    
+
     // page directory will be same, since child shares virtual memory 
     np->pgdir = curproc->pgdir; 
     
@@ -352,7 +351,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-   
+  
   if(curproc == initproc)
     panic("init exiting");
     
@@ -363,7 +362,7 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-
+  
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -373,7 +372,7 @@ exit(void)
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
-  
+    
   // wake up the thread group leader as well
   wakeup1(THREAD_LEADER(curproc));
 
@@ -448,8 +447,6 @@ join(int tid)
     struct proc *p, *curproc = myproc(), *tleader;
     int join_thread_exits;
 
-    acquire(&ptable.lock);
-    
     tleader = THREAD_LEADER(curproc);
 
     join_thread_exits = 0;
@@ -458,17 +455,24 @@ join(int tid)
         if(p->tid == tid && p->parent == tleader) {
             join_thread_exits = 1; 
             break;
-        } 
+        }
     }
 
     // join thread either doesn't exists or it doesn't belong to same group
-    if(!join_thread_exits) {
+    if(!join_thread_exits || curproc->killed) {
         release(&ptable.lock);
         return -1;
     }
     
+    acquire(&ptable.lock);
+
     // suspend execution of current thread and wait for completion of tid thread
     for(;;) {
+        // thread is killed by some other thread in group
+        if(curproc->killed) {
+            release(&ptable.lock);
+            return -1;
+        }
         if(p->state == ZOMBIE) {
             // Found the thread 
             kfree(p->kstack);
@@ -476,6 +480,7 @@ join(int tid)
             if(p->tstackalloc) {
                 freecloneuvm(p->pgdir, p->tstack);
             }
+            p->pgdir = 0;
             p->pid = 0;
             p->tid = 0;
             p->tstack = 0;
@@ -489,6 +494,7 @@ join(int tid)
         // Wait for thread to complete (See wakeup1 call in proc_exit.)
         sleep(tleader, &ptable.lock);  
     }     
+    return -1;
 }
 
 //PAGEBREAK: 42
@@ -522,7 +528,7 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-        
+       
       swtch(&(c->scheduler), p->context);
       switchkvm();
 

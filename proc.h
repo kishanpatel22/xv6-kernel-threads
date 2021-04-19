@@ -62,7 +62,6 @@ struct table{
 // global variable ptable 
 extern struct table ptable;
 
-
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
