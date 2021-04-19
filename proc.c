@@ -4,13 +4,11 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "proc.h"
 #include "spinlock.h"
+#include "proc.h"
 
-struct {
-  struct spinlock lock;
-  struct proc proc[NPROC];
-} ptable;
+// external varaible
+struct table ptable;
 
 static struct proc *initproc;
 
@@ -375,7 +373,10 @@ exit(void)
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
-    
+  
+  // wake up the thread group leader as well
+  wakeup1(THREAD_LEADER(curproc));
+
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
@@ -449,14 +450,7 @@ join(int tid)
 
     acquire(&ptable.lock);
     
-    // thread leader is current process 
-    if(curproc->tid == -1) {
-        tleader = curproc;
-    } 
-    // thread leader is parent process 
-    else {
-        tleader = curproc->parent;
-    }
+    tleader = THREAD_LEADER(curproc);
 
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group

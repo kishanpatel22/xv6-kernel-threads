@@ -54,6 +54,15 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
+struct table{
+  struct spinlock lock;
+  struct proc proc[NPROC];
+};
+
+// global variable ptable 
+extern struct table ptable;
+
+
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss

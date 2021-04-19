@@ -4,6 +4,7 @@
 #include "x86.h"
 #include "memlayout.h"
 #include "mmu.h"
+#include "spinlock.h"
 #include "proc.h"
 #include "elf.h"
 
@@ -392,7 +393,7 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
 
 
 // frees the cloned process memory 
-// Only stack entry and guard page entry are deleted.
+// Only stack entry and guard page entry are removed.
 void
 freecloneuvm(pde_t *pgdir, char *tstack) 
 {

@@ -2,6 +2,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "mmu.h"
+#include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
 #include "x86.h"
@@ -17,8 +18,36 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc();
+  struct proc *curproc = myproc(), *p;
+  int thread_exits_in_group;
   
+  // make all the threads in group to die (all process with same pid will be killed)
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == curproc->pid && p != curproc){
+      p->killed = 1; 
+      // some threads might be sleeping wake up them to kill
+      if(p->state == SLEEPING){
+        p->state = RUNNABLE;
+        p->chan = 0;
+      }
+    }
+  }
+
+  
+  thread_exits_in_group = 0;
+  
+  // wait for the threads in the group to die
+  for(;;) {
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == curproc->pid && p != curproc && p->state != ZOMBIE)
+        thread_exits_in_group = 1; 
+    }
+    if(!thread_exits_in_group) {
+        break;
+    }
+    sleep(THREAD_LEADER(curproc), &ptable.lock);
+  }
+
   begin_op();
 
   if((ip = namei(path)) == 0){
