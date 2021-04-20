@@ -425,12 +425,14 @@ clone_without_join()
 
 // ===========================================================================
 
-char *basic_exec_argv[] = {"echo", "hello"};
+char *basic_exec_argv[] = {"echo", "exec test ok"};
 
 int 
 exec_func(void *args) 
 {
+    // does an exec system call
     exec(basic_exec_argv[0], basic_exec_argv);
+    // exec should ideally not return 
     eprintf("basic exec test");
     exit(); 
 }
@@ -448,21 +450,25 @@ not_exec_func(void *agrs)
 int
 basic_exec_test() 
 {
-    int pid, exec_tid;
-    void *child_stack;
-    
+    int pid, exec_tid, not_exec_tid;
     pid = fork();
-    // child creates thread and one of thread does exec
+    // child creates two threads and one of thread does exec and other sleeps for 10 sec
     if(pid == 0) {
-        child_stack = malloc(TSTACK_SIZE);
-        exec_tid = clone(exec_func, child_stack + TSTACK_SIZE, 0, 0);
+        
+        // create two threads one doesn't do exec and one does exec 
+        not_exec_tid = clone(not_exec_func, 0, 0, 0);
+        exec_tid      = clone(exec_func, 0, 0, 0);
+        
+        // joining the exec thread
+        join(not_exec_tid);
         join(exec_tid);
-        free(child_stack);
+        
+        // join should never returns 
+        eprintf("basic exec test");
     }
     // parent simply waits for the child
     else {
         int cpid = wait();
-        printf(1, "wait retruns = %d\n", cpid);
         if(cpid == pid) {
             sprintf("basic exec test");
         } else {
@@ -484,8 +490,6 @@ main(int argc, char *argv[])
     //thread_peer_relationship();         // threads sharing peer to peer relationship
     //wait_join_test();                   // join and wait both work correctly 
     //clone_without_join();               // clone thread without join 
-
-    // having issue with this test  
     basic_exec_test();                  // exec test for threads
     exit();
 }

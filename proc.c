@@ -702,6 +702,7 @@ kill(int pid)
 }
 
 
+// process exit must call tgkill, before becoming ZOMBIE
 // tgkill kills all the thread present in the thread group
 // should only be called by functions holding pagetable locks
 int tgkill(struct spinlock *ptable_lock) {

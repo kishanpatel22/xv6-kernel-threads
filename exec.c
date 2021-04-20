@@ -18,12 +18,32 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc();
-    
-  acquire(&ptable.lock)
-  // make all the children die  
-      
-  release(&ptable.lock)
+  struct proc *curproc = myproc(), *p;
+  struct proc *tleader = THREAD_LEADER(curproc);
+
+  acquire(&ptable.lock);
+  
+  // thread calling exec
+  if(curproc->tid != -1) {
+    // main leader now becomes peer in thread group
+    tleader->tid = curproc->tid;
+    // current proc gets chance to become thread leader
+    curproc->tid = -1;
+    curproc->parent = tleader->parent;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == curproc->pid && p != curproc){
+        p->parent = curproc;
+      }
+    }
+    // free the kernel allocated stack page if any 
+    if(curproc->tstackalloc){
+      freecloneuvm(curproc->pgdir, curproc->tstack);
+    }
+  }
+  // kill all the threads in the group with currproc as thread leader
+  tgkill(&ptable.lock);
+
+  release(&ptable.lock);
 
   begin_op();
 
@@ -105,8 +125,6 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   // thread stack page of new process 
   curproc->tstack = (char *)curproc->sz;
-  // thread doing exec is now new process 
-  curproc->tid = -1;
   // stack is not allocated since it's not thread
   curproc->tstackalloc = 0;
   curproc->tf->eip = elf.entry;  // main
