@@ -379,21 +379,28 @@ exit(void)
 
   acquire(&ptable.lock);
 
+  // thread doing exits informs the group leader
+  if(curproc->tid != -1){
+    // wake up the thread group leader as well
+    wakeup1(THREAD_LEADER(curproc));
+  } 
+  // thread group leader doing exit kills all the threads in group.
+  else {
+      tgkill(&ptable.lock);
+  }
+
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
-    
-  // wake up the thread group leader as well
-  wakeup1(THREAD_LEADER(curproc));
-
+  
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+    // only process are passed to init
+    if(p->parent == curproc && p->tid == -1){
       p->parent = initproc;
       if(p->state == ZOMBIE)
         wakeup1(initproc);
     }
-  }
-
+  } 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
   sched();
@@ -417,16 +424,12 @@ wait(void)
       if(THREAD_LEADER(p)->parent != curproc)
         continue;
       havekids = 1;
-      if(p->state == ZOMBIE){
+      if(p->state == ZOMBIE && p->tid == -1){
         // Found one.
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
-        if(p->tid == -1){
-            freevm(p->pgdir);
-        } else if(p->tstackalloc){
-            freecloneuvm(p->pgdir, p->tstack);
-        }
+        freevm(p->pgdir);
         p->pid = 0;
         p->tid = 0;
         p->tstack = 0;
@@ -438,7 +441,6 @@ wait(void)
         return pid;
       }
     }
-
     // No point waiting if we don't have any children.
     if(!havekids || curproc->killed){
       release(&ptable.lock);
@@ -461,7 +463,7 @@ join(int tid)
     int join_thread_exits;
     
     // cannot join any process 
-    if(tid == -1) {
+    if(tid == -1){
         return -1;
     }
 
@@ -470,14 +472,14 @@ join(int tid)
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader) {
+        if(p->tid == tid && p->parent == tleader){
             join_thread_exits = 1; 
             break;
         }
     }
 
     // join thread either doesn't exists or it doesn't belong to same group
-    if(!join_thread_exits || curproc->killed) {
+    if(!join_thread_exits || curproc->killed){
         release(&ptable.lock);
         return -1;
     }
@@ -485,17 +487,17 @@ join(int tid)
     acquire(&ptable.lock);
 
     // suspend execution of current thread and wait for completion of tid thread
-    for(;;) {
+    for(;;){
         // thread is killed by some other thread in group
-        if(curproc->killed) {
+        if(curproc->killed){
             release(&ptable.lock);
             return -1;
         }
-        if(p->state == ZOMBIE) {
+        if(p->state == ZOMBIE){
             // Found the thread 
             kfree(p->kstack);
             p->kstack = 0;
-            if(p->tstackalloc) {
+            if(p->tstackalloc){
                 freecloneuvm(p->pgdir, p->tstack);
             }
             p->pgdir = 0;
@@ -546,7 +548,7 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-       
+        
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
@@ -698,6 +700,72 @@ kill(int pid)
   release(&ptable.lock);
   return -1;
 }
+
+
+// tgkill kills all the thread present in the thread group
+// should only be called by functions holding pagetable locks
+int tgkill(struct spinlock *ptable_lock) {
+    
+    struct proc *curproc = myproc(), *p;
+    int havethreads;
+    
+    // only thread leader can kill threads in group 
+    if(THREAD_LEADER(curproc) != curproc){
+        return -1;
+    }
+    // make all the threads in group to die (all process with same pid will be killed)
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == curproc->pid && p->tid != -1){
+        p->killed = 1; 
+        // some threads might be sleeping wake up them to kill
+        if(p->state == SLEEPING){
+          p->state = RUNNABLE;
+          p->chan = 0;
+        }
+      }
+    }
+    // now let all the threads finish and wait for them become zombie
+    for(;;){
+      havethreads = 0;
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->pid != curproc->pid || p->tid == -1)
+          continue;
+        // thread in group has already died
+        if(p->state == ZOMBIE){
+          kfree(p->kstack);
+          p->kstack = 0;
+          if(p->tstackalloc){
+            freecloneuvm(p->pgdir, p->tstack);
+          }
+          p->pid = 0;
+          p->tid = 0;
+          p->tstack = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
+        } 
+        // thread in group is not died yet so suspend untill it dies.
+        else {
+          havethreads = 1; 
+          break;
+        }
+      }
+      // group leader doesn't have any threads 
+      if(!havethreads){
+          break;
+      } 
+      // the thread leader gets killed
+      if(curproc->killed) {
+        return -1;
+      }
+      // sleep for an exisiting thread in group to be killed
+      sleep(curproc, ptable_lock);
+    }
+    // successfully killed all threads in group
+    return 0;
+}
+
 
 //PAGEBREAK: 36
 // Print a process listing to console.  For debugging.

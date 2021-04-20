@@ -351,7 +351,6 @@ bad:
 char*
 cloneuvm(pde_t* pgdir, uint size, char *guard_page) 
 {
-    
     pte_t *pte, *guard_pte, *stack_pte;
     char *stack_page;
     char *va = (char *)KERNBASE - PGSIZE;
@@ -362,19 +361,19 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
         pte = walkpgdir(pgdir, va, 0);
         if(pte == 0) {
             break;
-        } 
+        }
         if(!(*pte & PTE_P)) {
-            break; 
+            break;
         }
         if(va < (char *)size) {
             break;
         }
-        va = va - PGSIZE;  
+        va = va - PGSIZE;
     }
 
     // kernel cannot currupt the process memory 
     // could happen in case of stack crossing heap 
-    if(va < (char *)size) {      
+    if(va < (char *)size) {
         return 0;
     }
 
@@ -405,11 +404,11 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
     // the guard page table entry of the original process 
     if((guard_pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
         // every process should have a guard page
-        panic("guard page not found");  
+        panic("guard page not found");
     }
     // SMART KERNEL : guard page is never reallcoated 
     // rather page table entry for guard page is shared.
-    *pte = *guard_pte;          
+    *pte = *guard_pte;
     
     // the base address of the new stack 
     return tstack;

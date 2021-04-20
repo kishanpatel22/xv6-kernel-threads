@@ -387,12 +387,50 @@ thread_peer_relationship()
 
 // ===========================================================================
 
-char *argv[] = {"echo", "hello"};
+int 
+clone_without_join_func(void *agrs) 
+{
+    sleep(10);
+    exit();
+}
+
+// clone system call done without a join system call, i.e. any process or
+// group leader thread exits before the other threads are joined or completed
+// TEST CASE : waid only returns after the child process all threads are killed
+//           : clone without join will kill all threads 
+int 
+clone_without_join() 
+{
+    int pid, wpid;
+    pid = fork();
+    // child create threads and doesn't wait
+    if(pid == 0) {
+        // creating threads 
+        clone(clone_without_join_func, 0, 0, 0);
+        clone(clone_without_join_func, 0, 0, 0);
+        // calling exit not waiting for the threads
+        exit();
+    } 
+    // parent waits for the child
+    wpid = wait(); 
+    if(wpid == pid) {
+        sprintf("clone without join");
+    } else {
+        eprintf("clone without join"); 
+    }
+    // success
+    return 0;
+}
+
+
+// ===========================================================================
+
+char *basic_exec_argv[] = {"echo", "hello"};
 
 int 
 exec_func(void *args) 
 {
-    exec(argv[0], argv);
+    exec(basic_exec_argv[0], basic_exec_argv);
     eprintf("basic exec test");
     exit(); 
 }
@@ -405,6 +443,8 @@ not_exec_func(void *agrs)
     exit();
 }
 
+// created cloned process makes an exec, which will kill all the threads
+// running for the currently executing 
 int
 basic_exec_test() 
 {
@@ -424,9 +464,9 @@ basic_exec_test()
         int cpid = wait();
         printf(1, "wait retruns = %d\n", cpid);
         if(cpid == pid) {
-            sprintf("basic exec test\n");
+            sprintf("basic exec test");
         } else {
-            eprintf("basic exec test\n");
+            eprintf("basic exec test");
         }
     }
     // success 
@@ -438,14 +478,15 @@ basic_exec_test()
 int
 main(int argc, char *argv[])
 {
-    basic_clone_join();                 // simple clone and join system call
-    basic_nested_clone_join();          // nested clone and join system call
-    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    thread_peer_relationship();         // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    
+    //basic_clone_join();                 // simple clone and join system call
+    //basic_nested_clone_join();          // nested clone and join system call
+    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    //thread_peer_relationship();         // threads sharing peer to peer relationship
+    //wait_join_test();                   // join and wait both work correctly 
+    //clone_without_join();               // clone thread without join 
+
     // having issue with this test  
-    //basic_exec_test();                  // exec test for threads
+    basic_exec_test();                  // exec test for threads
     exit();
 }
 

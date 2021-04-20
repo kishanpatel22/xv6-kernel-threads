@@ -18,68 +18,13 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc(), *p, *tleader, *tleader_parent;
-  int thread_exits_in_group;
-  
-  // thread group leader 
-  tleader = THREAD_LEADER(curproc);
-  // thread group leader parent  
-  tleader_parent = tleader->parent;
- 
-  acquire(&ptable.lock);
-  // make all the threads in group to die (all process with same pid will be killed)
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->pid == curproc->pid && p != curproc){
-      p->killed = 1; 
-      // some threads might be sleeping wake up them to kill
-      if(p->state == SLEEPING){
-        p->state = RUNNABLE;
-        p->chan = 0;
-      }
-    }
-  }
-  release(&ptable.lock);
-  
-  acquire(&ptable.lock);
-  // wait for the threads in the group to die
-  // similar to join but happens after killing threads
-  for(;;) {
-    thread_exits_in_group = 0;
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      // the thread has not died
-      if(p->pid == curproc->pid && p != curproc && p->state != ZOMBIE){
-        thread_exits_in_group = 1;
-        break;
-      } else if(p->pid == curproc->pid && p != curproc && p->state == ZOMBIE){
-        kfree(p->kstack);
-        p->kstack = 0;
-        if(p->tstackalloc) {
-            freecloneuvm(p->pgdir, p->tstack);
-        }
-        // page directory is not deallocated here 
-        p->pgdir = 0; 
-        p->pid = 0;
-        p->tid = 0;
-        p->tstack = 0;
-        p->parent = 0;
-        p->name[0] = 0;
-        p->killed = 0;
-        p->state = UNUSED;
-      }
-    }
-    // there are no threads in group to wait for 
-    if(!thread_exits_in_group) {
-        break;
-    }
-    // sleep untill the excecution 
-    sleep(tleader, &ptable.lock);
-  }
-  // free the stack of thread if it was allocated by kernel
-  if(curproc->tstackalloc) {
-    freecloneuvm(curproc->pgdir, curproc->tstack);
-  }
-  release(&ptable.lock);
- 
+  struct proc *curproc = myproc();
+    
+  acquire(&ptable.lock)
+  // make all the children die  
+      
+  release(&ptable.lock)
+
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -154,9 +99,6 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
    
-  // the new process is attached earlier group leaders parent 
-  curproc->parent = tleader_parent;
-
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
