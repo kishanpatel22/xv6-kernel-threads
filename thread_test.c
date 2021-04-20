@@ -440,9 +440,9 @@ main(int argc, char *argv[])
 {
     basic_clone_join();                 // simple clone and join system call
     basic_nested_clone_join();          // nested clone and join system call
-    wait_join_test();                   // join and wait both work correctly 
     kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
     thread_peer_relationship();         // threads sharing peer to peer relationship
+    wait_join_test();                   // join and wait both work correctly 
     
     // having issue with this test  
     //basic_exec_test();                  // exec test for threads

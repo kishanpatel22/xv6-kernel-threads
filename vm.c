@@ -354,29 +354,34 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
     
     pte_t *pte, *guard_pte, *stack_pte;
     char *stack_page;
-    char *va = (char *)size;
+    char *va = (char *)KERNBASE - PGSIZE;
+    char *tstack;
     
-    // cannot currupt kernel's address for cloning process !!
-    if(va >= (char *)KERNBASE) {      
+    // find empty slot for allocated the stack 
+    while(1) {
+        pte = walkpgdir(pgdir, va, 0);
+        if(pte == 0) {
+            break;
+        } 
+        if(!(*pte & PTE_P)) {
+            break; 
+        }
+        if(va < (char *)size) {
+            break;
+        }
+        va = va - PGSIZE;  
+    }
+
+    // kernel cannot currupt the process memory 
+    // could happen in case of stack crossing heap 
+    if(va < (char *)size) {      
         return 0;
     }
-    
-    // allocate page table entry for guard if necessary 
-    if((pte = walkpgdir(pgdir, va, 1)) == 0) {
-        return 0;
-    }
-    // the guard page table entry of the original process 
-    if((guard_pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
-        // every process should have a guard page
-        panic("guard page not found");  
-    }
-    
-    // SMART KERNEL : guard page is never reallcoated 
-    // rather page table entry for guard page is shared.
-    *pte = *guard_pte;          
-    
+
+    // stack base address 
+    tstack = va + PGSIZE;  
+
     // now the new allocation of the stack for the cloned process
-    va += PGSIZE;
     if((stack_pte = walkpgdir(pgdir, va, 1)) == 0) {
         return 0; 
     }
@@ -386,9 +391,28 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
     memset(stack_page, 0, PGSIZE);
     *stack_pte = V2P(stack_page) | PTE_U | PTE_W | PTE_P;
     
+    // guard page entry 
+    va -= PGSIZE;
+    if(va < (char *)size) {
+        *stack_pte = 0;
+        kfree(stack_page);
+        return 0;
+    }    
+    // allocate page table entry for guard page
+    if((pte = walkpgdir(pgdir, va, 1)) == 0) {
+        return 0;
+    }
+    // the guard page table entry of the original process 
+    if((guard_pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
+        // every process should have a guard page
+        panic("guard page not found");  
+    }
+    // SMART KERNEL : guard page is never reallcoated 
+    // rather page table entry for guard page is shared.
+    *pte = *guard_pte;          
+    
     // the base address of the new stack 
-    va += PGSIZE;
-    return va;
+    return tstack;
 }
 
 
@@ -414,7 +438,8 @@ freecloneuvm(pde_t *pgdir, char *tstack)
     if((pte = walkpgdir(pgdir, guard_page, 0)) == 0) {
         panic("clone process has no guard page !!");
     }
-    // earising the guarding page entry
+    // earising the guarding page entry 
+    // (remember kernel never allocated guard for cloned process)
     *pte = 0;
 }
 

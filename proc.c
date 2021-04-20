@@ -278,9 +278,8 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
         if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
             return -1; 
         }
-        // update the size of the thread leader 
-        tleader->sz = (uint)np->tstack;
-
+        // no need to update the size of the process 
+        
         // the stack is allocated by the kernel 
         np->tstackalloc = 1;
 
@@ -460,6 +459,11 @@ join(int tid)
 {
     struct proc *p, *curproc = myproc(), *tleader;
     int join_thread_exits;
+    
+    // cannot join any process 
+    if(tid == -1) {
+        return -1;
+    }
 
     tleader = THREAD_LEADER(curproc);
 
