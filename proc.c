@@ -206,27 +206,40 @@ fork(void)
   tleader = THREAD_LEADER(curproc);
     
   // Copy process state from proc. 
-  //(current implementation all threads are being copied
-  if(curproc->tid == -1) {
-    if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-      kfree(np->kstack);
-      np->kstack = 0;
-      np->state = UNUSED;
-      return -1;
-    }
+  // Copy out text / data + heap + stack region of process from thread leader
+  if((np->pgdir = copyuvm(tleader->pgdir, tleader->sz)) == 0){
+    kfree(np->kstack);
+    np->kstack = 0;
+    np->state = UNUSED;
+    return -1;
   }
+  
   // size same as thread leader
   np->sz = tleader->sz;
-  // parent is the thread leader 
+ 
+  // parent process is the thread leader 
+  // process can have parent as processes and not threads
   np->parent = tleader;
 
-  // trap frame is same as current thread
-  *np->tf = *curproc->tf;             
   // the execution stack of the threads
-  np->tstack = curproc->tstack;
+  np->tstack = tleader->tstack;
+ 
+  // trap frame is same as current thread
+  *np->tf = *curproc->tf;
   
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
+
+  // thread executing make fork system call 
+  // copy out the stack of thread which called fork 
+  // kernel thread implementation copies only thread which
+  // called fork not all threads in process address space
+  if(curproc->tid != -1) {
+    if(copy_thread_stack(np->pgdir, np->tstack - PGSIZE, tleader->pgdir, curproc->tstack - PGSIZE) == -1) {
+      return -1; 
+    }
+    np->tf->esp = (uint)np->tstack - ((uint)curproc->tstack - np->tf->esp);
+  } 
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
@@ -421,7 +434,7 @@ wait(void)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(THREAD_LEADER(p)->parent != curproc)
+      if(THREAD_LEADER(p)->parent != THREAD_LEADER(curproc))
         continue;
       havekids = 1;
       if(p->state == ZOMBIE && p->tid == -1){
@@ -446,9 +459,8 @@ wait(void)
       release(&ptable.lock);
       return -1;
     }
-
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
-    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+    sleep(THREAD_LEADER(curproc), &ptable.lock);  //DOC: wait-sleep
   }
 }
 
@@ -480,7 +492,6 @@ join(int tid)
 
     // join thread either doesn't exists or it doesn't belong to same group
     if(!join_thread_exits || curproc->killed){
-        release(&ptable.lock);
         return -1;
     }
     

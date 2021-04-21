@@ -442,6 +442,37 @@ freecloneuvm(pde_t *pgdir, char *tstack)
     *pte = 0;
 }
 
+// copies out the stack from the given two pgdirectory 
+int copy_thread_stack(pde_t *dest, char *dest_stack, pde_t *src, char *src_stack) {
+    pte_t *dest_stack_pte, *src_stack_pte;
+    char *dest_stack_addr, *src_stack_addr;
+
+    // no page found in the source directory 
+    if((src_stack_pte = walkpgdir(src, src_stack, 0)) == 0) {
+        return -1;
+    }
+    // no page exits in the source page table entry 
+    if(!(*src_stack_pte & PTE_P)) {
+        return -1;
+    }
+        
+    // no page found in the destination directory 
+    if((dest_stack_pte = walkpgdir(dest, dest_stack, 0)) == 0) {
+        return -1;
+    }
+    // no page exits in the destination page table entry 
+    if(!(*dest_stack_pte & PTE_P)) {
+        return -1;
+    }
+     
+    // find the virtuall address of the stack 
+    dest_stack_addr = (char *)P2V(PTE_ADDR(*dest_stack_pte));
+    src_stack_addr  = (char *)P2V(PTE_ADDR(*src_stack_pte));
+
+    memmove(dest_stack_addr, src_stack_addr, PGSIZE);
+    return 0;
+}
+
 
 //PAGEBREAK!
 // Map user virtual address to kernel address.

@@ -30,6 +30,14 @@ exec(char *path, char **argv)
     // current proc gets chance to become thread leader
     curproc->tid = -1;
     curproc->parent = tleader->parent;
+    // all the childrens of tleader are attached to the new tleader
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      // child process for the group leader
+      if(p->parent == tleader && p->tid == -1){
+        p->parent = curproc;
+      }
+    } 
+    // all the threads now have new group leader 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->pid == curproc->pid && p != curproc){
         p->parent = curproc;
