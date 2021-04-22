@@ -28,6 +28,10 @@ int uptime(void);
 int clone(int (*func)(void *args), void *child_stack, int flags, void *args);
 // implementation of join system call
 int join(int tid);
+// kill the thread with given id
+int tkill(int tid);
+// kills the all threads in thread group 
+int tgkill(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -42,3 +46,27 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+
+// kthreads user library 
+#define KERNEL_STACK_ALLOC      (1)
+#define SBRK_STACK_ALLOC        (2)
+
+// change the macro to change the implementation of the library
+#define LIB_IMPLEMENTATION      (KERNEL_STACK_ALLOC)
+
+#define KTHREAD_STACK_SIZE      (4096)
+
+enum tstate {NEW, RUNNING, SUSPENDED, DEAD};
+
+typedef struct kthread_t {
+    void *tstack;               // thread stack of execution 
+    int tid;                    // thread id 
+    int state;                  // state of the thread 
+} kthread_t;
+
+int create_thread_stack(void **stack);
+void destory_thread_stack(void **stack);
+int kthread_create(kthread_t *kthread, int func(void *args), void *args);
+int kthread_join(kthread_t *kthread);
+int kthread_exit()__attribute__((noreturn));
+

@@ -48,10 +48,10 @@ exec(char *path, char **argv)
       freecloneuvm(curproc->pgdir, curproc->tstack);
     }
   }
-  // kill all the threads in the group with currproc as thread leader
-  tgkill(&ptable.lock);
-
   release(&ptable.lock);
+
+  // kill all the threads in the group with currproc as thread leader
+  tgkill();
 
   begin_op();
 

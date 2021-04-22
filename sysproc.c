@@ -93,10 +93,38 @@ sys_kill(void)
   return kill(pid);
 }
 
+// kills paritcular thread in the group
+int 
+sys_tkill(void)
+{
+  int tid;
+
+  if(argint(0, &tid) < 0)
+    return -1;
+  return tkill(tid);
+}
+
+// kills complete thread group
+// kills all thread expect group leader
+int 
+sys_tgkill(void)
+{
+  return tgkill();
+}
+
 int
 sys_getpid(void)
 {
   return myproc()->pid;
+}
+
+// gets thread id of the process 
+// if process calls gettid pid is returned (single threaded process)
+// if thread calls gettid tid is returned  (multithreaded process)
+int 
+sys_gettid(void) 
+{
+  return myproc()->tid == -1 ? sys_getpid() : myproc()->tid;    
 }
 
 int

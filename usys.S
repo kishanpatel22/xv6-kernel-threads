@@ -31,4 +31,6 @@ SYSCALL(sleep)
 SYSCALL(uptime)
 SYSCALL(clone)
 SYSCALL(join)
-
+SYSCALL(gettid)
+SYSCALL(tkill)
+SYSCALL(tgkill)

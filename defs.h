@@ -116,7 +116,11 @@ int             join(int tid);
 
 int             growproc(int);
 int             kill(int);
-int             tgkill(struct spinlock *);
+// implementation of killing thread
+int             tkill(int tid);
+// implementation of killing thread group
+int             tgkill();
+
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            pinit(void);

@@ -21,6 +21,8 @@
 int global_var;     // one global variable for all functions to test 
 
 // ===========================================================================
+// =========================== SYSTEM CALLS ==================================
+// ===========================================================================
 
 typedef struct sortargs {
     int *arr, start, end;
@@ -79,7 +81,7 @@ sort(void *args)
 // creates two threads and waits for concurrent execution of merge sort
 // TEST CASE : checks virtual address space is shared (heap and text/data)
 //           : checks for threads being executed concurrently (as if were a process)
-//           : check for join system call which blocks/suspends the process 
+//           : check for join system call which blocks/suspends the thread
 int 
 clone_join_test() 
 {
@@ -91,7 +93,7 @@ clone_join_test()
 
     arr = (int *)malloc(sizeof(int) * n);
     if(!arr) {
-        eprintf("malloc failed cannot allocate memory for sorting\n");
+        eprintf("malloc failed");
     }
     // creating a reverse sorted array
     for(int i = 0; i < n; i++) {
@@ -109,7 +111,7 @@ clone_join_test()
     cstack1 = malloc(TSTACK_SIZE);
     cstack2 = malloc(TSTACK_SIZE);
     if(!cstack1 || !cstack2) {
-        eprintf("malloc failed cannot allocate memory for stack space"); 
+        eprintf("malloc failed"); 
     }
 
     // creating threads for sorting concurrently 
@@ -227,8 +229,8 @@ wait_join_func(void *agrs)
 // join waits for a paritcular thread to finish, wait must wait for "any" 
 // child process to finish. Note child process will be suspended uptill
 // execution of all the threads which are present in thread group of child.
-// TEST CASE : check if wait returns only after all joins join
-//             globals being shared in fork and child threads 
+// TEST CASE : check if wait returns only after all threads are completed
+//           : globals being shared in fork and child threads 
 int 
 wait_join_test() 
 {
@@ -449,7 +451,8 @@ not_exec_func(void *agrs)
 
 // created cloned process makes an exec, which will kill all the threads
 // running for the currently executing 
-// TEST CASE : exec system call in clone the virtual process address space 
+// TEST CASE : exec system call inside a thread, replaces virtual address space 
+//             of whole process along with all it's threads
 //           : all threads of the process die execpt the group leader
 int
 exec_test() 
@@ -555,7 +558,7 @@ int fork_func_id, not_fork_func_id;
 int 
 not_fork_func(void *agrs) 
 {
-    sleep(10);
+    sleep(50);
     exit();
 }
 
@@ -634,19 +637,128 @@ fork_test()
 
 // ===========================================================================
 
+#define SECRET              (100)
+#define NEW_SECRET          (200)
+
+// the function runs infinetly 
+int
+change_secret(void *args) 
+{   
+    for(;;){
+        ;
+    }
+    global_var = NEW_SECRET;
+    exit();
+}
+
+// threads in the same thread group can kill each other.
+// however any thread cannot kill the thread group leader.
+// TEST CASE : main thread killing a peer thread
+int 
+thread_kill_test() 
+{
+    global_var = SECRET;
+    int new_secret = NEW_SECRET, tid;
+    
+    // create thread that modifies global variable 
+    tid = clone(change_secret, 0, 0, &new_secret); 
+    // kill the thread 
+    tkill(tid);
+    
+    // should be unable to join killed thread
+    if(join(tid) == -1 && global_var != NEW_SECRET){
+        sprintf("thread kill test"); 
+    } else{
+        eprintf("thread kill test");
+    }
+    exit();
+}
+
+// ===========================================================================
+// ============================ KTHREAD LIBRARY ==============================
+// ===========================================================================
+
+// ===========================================================================
+
+#define MAX_THREAD_TEST         (1024)
+#define MAX_THREAD_COUNT        (64 - 3)
+
+int 
+kthread_test_func()
+{
+    sleep(10);
+    kthread_exit();
+}
+
+// tests for maximum number of threading that library can create 
+// TESTCASE : maximum number of threads that can be created 
+int 
+kthread_lib_test() 
+{
+    kthread_t kth_pool[MAX_THREAD_TEST];
+    int thread_count = 0;
+
+    // creating the threads using kthread library
+    for(int i = 0; i < MAX_THREAD_TEST; i++){
+        if(kthread_create(kth_pool + i, kthread_test_func, 0) == -1){
+            break; 
+        }
+        thread_count++;
+    }
+    
+    // join the maximum threads that are created
+    for(int i = 0; i < thread_count; i++){
+        kthread_join(kth_pool + i);
+    }
+
+    // check for number of threads created 
+    if(thread_count < MAX_THREAD_COUNT) {
+        eprintf("kthread lib test");
+    } 
+    
+    sprintf("kthread lib test");
+    // success 
+    return 0;
+}
+
+// ===========================================================================
+
+int
+kthread_attach_detach_test()
+{
+    
+    // success
+    return 0;
+}
+
+// ===========================================================================
+
 int
 main(int argc, char *argv[])
 {
-    clone_join_test();                  // simple clone and join system call
-    nested_clone_join_test();           // nested clone and join system call
-    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    thread_peer_relationship_test();    // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    clone_without_join_test();          // clone thread without join 
-    exec_test();                        // exec test for threads
-    two_exec_test();                    // exec concurrently done by seperate threads
-    fork_test();                        // thread calls fork system call
+    
+    // SYSTEM CALL TESTS 
+    
+    //clone_join_test();                  // simple clone and join system call
+    //nested_clone_join_test();           // nested clone and join system call
+    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    //thread_peer_relationship_test();    // threads sharing peer to peer relationship
+    //wait_join_test();                   // join and wait both work correctly 
+    //clone_without_join_test();          // clone thread without join 
+    //exec_test();                        // exec test for threads
+    //two_exec_test();                    // exec concurrently done by seperate threads
+    //fork_test();                        // thread calls fork system call
+    //thread_kill_test();                 // kills thread 
+    
+    
+    // KTHREAD LIBRARY TESTS
+    //kthread_lib_test();                 // max threads created by kthread lib
+    kthread_attach_detach_test();         // kthread attach detach
+
+    // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
     exit();
 }
+
+
 

@@ -389,6 +389,11 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
+        
+  // thread group leader doing exit kills all the threads in group.
+  if(curproc->tid == -1) {
+    tgkill();
+  }
 
   acquire(&ptable.lock);
 
@@ -397,10 +402,6 @@ exit(void)
     // wake up the thread group leader as well
     wakeup1(THREAD_LEADER(curproc));
   } 
-  // thread group leader doing exit kills all the threads in group.
-  else {
-      tgkill(&ptable.lock);
-  }
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
@@ -472,7 +473,7 @@ int
 join(int tid) 
 {
     struct proc *p, *curproc = myproc(), *tleader;
-    int join_thread_exits;
+    int join_thread_exits, jtid;
     
     // cannot join any process 
     if(tid == -1){
@@ -484,7 +485,7 @@ join(int tid)
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader){
+        if(p->tid == tid && p->parent == tleader && !p->killed){
             join_thread_exits = 1; 
             break;
         }
@@ -506,6 +507,7 @@ join(int tid)
         }
         if(p->state == ZOMBIE){
             // Found the thread 
+            jtid = p->tid;
             kfree(p->kstack);
             p->kstack = 0;
             if(p->tstackalloc){
@@ -520,7 +522,7 @@ join(int tid)
             p->killed = 0;
             p->state = UNUSED;
             release(&ptable.lock);
-            return 0;
+            return jtid;
         } 
         // Wait for thread to complete (See wakeup1 call in proc_exit.)
         sleep(tleader, &ptable.lock);  
@@ -699,7 +701,7 @@ kill(int pid)
 
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->pid == pid){
+    if(p->pid == pid && p->tid == -1){
       p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
@@ -712,12 +714,40 @@ kill(int pid)
   return -1;
 }
 
+// kills paritcular thread with tid present in thread group 
+// threads cannot kill main thread since it is process.
+int
+tkill(int tid) 
+{
+  struct proc *curproc = myproc(), *p;
+  // cannot kill the main thread 
+  if(tid == -1)
+    return -1;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    // threads share same pid
+    if(p->pid == curproc->pid && p->tid == tid){
+      p->killed = 1;  
+      // wakeup the process to kill 
+      if(p->state == SLEEPING){
+          p->state = RUNNING; 
+      }
+      release(&ptable.lock);
+      return 0;
+    }  
+  }
+  release(&ptable.lock);
+  return -1;  
+}
 
 // process exit must call tgkill, before becoming ZOMBIE
 // tgkill kills all the thread present in the thread group
 // should only be called by functions holding pagetable locks
-int tgkill(struct spinlock *ptable_lock) {
-    
+int 
+tgkill(void) 
+{
+     
     struct proc *curproc = myproc(), *p;
     int havethreads;
     
@@ -725,6 +755,9 @@ int tgkill(struct spinlock *ptable_lock) {
     if(THREAD_LEADER(curproc) != curproc){
         return -1;
     }
+        
+    acquire(&ptable.lock);
+
     // make all the threads in group to die (all process with same pid will be killed)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->pid == curproc->pid && p->tid != -1){
@@ -769,11 +802,14 @@ int tgkill(struct spinlock *ptable_lock) {
       } 
       // the thread leader gets killed
       if(curproc->killed) {
+        release(&ptable.lock);
         return -1;
       }
       // sleep for an exisiting thread in group to be killed
-      sleep(curproc, ptable_lock);
+      sleep(curproc, &ptable.lock);
     }
+
+    release(&ptable.lock);
     // successfully killed all threads in group
     return 0;
 }
