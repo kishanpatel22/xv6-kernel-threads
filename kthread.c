@@ -1,9 +1,10 @@
-// module contains userland threading library which creates
-// threads using the underlying system calls like clone and join
 #include "types.h"
 #include "stat.h"
 #include "user.h"
 #include "fcntl.h"
+
+// module contains userland threading library which creates
+// threads using the underlying system calls like clone and join
 
 // creates thread stack using heap memory allocation
 int 

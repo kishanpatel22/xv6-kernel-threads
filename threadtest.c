@@ -350,7 +350,7 @@ int peer_fun1(void *args)
 // TESTCASE : any thread can wait to join for any other thread in thread pool
 //          : open file descripter are shared in thread creating 
 int 
-thread_peer_relationship_test() 
+peer_relationship_test() 
 {
     char buffer[128];
     __open_fd__ = open(PEER_TEST_FILE, O_RDWR | O_CREATE);
@@ -655,7 +655,7 @@ change_secret(void *args)
 // however any thread cannot kill the thread group leader.
 // TEST CASE : main thread killing a peer thread
 int 
-thread_kill_test() 
+kill_test() 
 {
     global_var = SECRET;
     int new_secret = NEW_SECRET, tid;
@@ -671,8 +671,66 @@ thread_kill_test()
     } else{
         eprintf("thread kill test");
     }
+
+    // success
+    return 0;
+}
+
+// ===========================================================================
+
+#define DURING_EVENT        (5)
+#define AFTER_EVENT         (7)
+#define VALIDATE_EVENT(x)   (x == (DURING_EVENT * 10 + AFTER_EVENT))
+
+int __event_wait_tid__, __event_tid__;
+
+// function waits for paritcular even to get over 
+int
+event_wait_func(void *args) 
+{
+    // suspends the execution event thread completes
+    tsuspend(); 
+    global_var = global_var * 10 + AFTER_EVENT; 
     exit();
 }
+
+// the function completes particular event
+int
+event_func(void *args)
+{
+    // does particular event 
+    sleep(10);
+    global_var = global_var * 10 + DURING_EVENT;
+    
+    // resumes particular thread which was waiting for event 
+    tresume(__event_wait_tid__);
+    exit();
+}
+
+
+// threads can suspend their exeuction if required and let other threads
+// inform about resuming the exeuction, basically implementation of event wait
+// TESTCASE : one thread can suspend its execution and can be resumed by other thread
+//          : tsuspend and tresume system calls give signaling mechanism to threads
+int 
+event_wait_test() 
+{
+    global_var = 0;
+    __event_wait_tid__  = clone(event_wait_func, 0, 0, 0);
+    __event_tid__       = clone(event_func, 0, 0, 0);
+    
+    join(__event_tid__);
+    join(__event_wait_tid__);
+    
+    if(VALIDATE_EVENT(global_var)){
+        sprintf("event wait test"); 
+    } else{
+        eprintf("event wait test"); 
+    }
+    // success 
+    return 0;
+}
+
 
 // ===========================================================================
 // ============================ KTHREAD LIBRARY ==============================
@@ -733,6 +791,16 @@ kthread_attach_detach_test()
 
 // ===========================================================================
 
+int 
+kthread_semaphore_test() 
+{
+    
+    // success 
+    return 0;
+}
+
+// ===========================================================================
+
 int
 main(int argc, char *argv[])
 {
@@ -742,18 +810,21 @@ main(int argc, char *argv[])
     //clone_join_test();                  // simple clone and join system call
     //nested_clone_join_test();           // nested clone and join system call
     //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    //thread_peer_relationship_test();    // threads sharing peer to peer relationship
+    //peer_relationship_test();           // threads sharing peer to peer relationship
     //wait_join_test();                   // join and wait both work correctly 
     //clone_without_join_test();          // clone thread without join 
     //exec_test();                        // exec test for threads
     //two_exec_test();                    // exec concurrently done by seperate threads
     //fork_test();                        // thread calls fork system call
-    //thread_kill_test();                 // kills thread 
-    
-    
+    //kill_test();                        // kills thread 
+    //event_wait_test();                  // suspend and resume test for threads 
+
     // KTHREAD LIBRARY TESTS
     //kthread_lib_test();                 // max threads created by kthread lib
-    kthread_attach_detach_test();         // kthread attach detach
+    //kthread_attach_detach_test();       // kthread attach detach
+    //kthread_semaphore_test();           // synchorization using semaphore
+    
+
 
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     

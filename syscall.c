@@ -133,6 +133,8 @@ extern int sys_join(void);
 extern int sys_gettid(void);
 extern int sys_tkill(void);
 extern int sys_tgkill(void);
+extern int sys_tsuspend(void);
+extern int sys_tresume(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -161,6 +163,8 @@ static int (*syscalls[])(void) = {
 [SYS_gettid]  sys_gettid,
 [SYS_tkill]   sys_tkill,
 [SYS_tgkill]  sys_tgkill,
+[SYS_tsuspend] sys_tsuspend,
+[SYS_tresume] sys_tresume,
 };
 
 void

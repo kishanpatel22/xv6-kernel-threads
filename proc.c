@@ -851,3 +851,62 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+// suspends execution of thread (thread goes on self sleep)
+// system allows the thread to sleep 
+int
+tsuspend(void)
+{
+    struct proc *curproc = myproc();
+    // cannot suspend the main thread leader which the process 
+    if(curproc == THREAD_LEADER(curproc)) {
+        return -1;
+    }
+
+    // thread is suspended and it sleeps
+    acquire(&ptable.lock);
+    sleep(curproc, &ptable.lock); 
+    release(&ptable.lock);
+
+    return 0;
+}
+
+
+// resumes exeuction of thread with given tid
+// system call allows thread to wake up another thread
+int
+tresume(int tid)
+{
+    struct proc *curproc = myproc(), *p;
+    int resume_thread_exits;
+
+    // main leader thread cannot be resumed 
+    if(tid == -1){
+        return -1;
+    }
+    
+    resume_thread_exits = 0;
+    // check if thread belongs to same thread group
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->tid == tid && p->pid == curproc->pid){
+            resume_thread_exits = 1;
+            break;
+        }
+    }
+
+    // the thread with tid doesn't exits in group
+    // or the current thread has been killed 
+    if(!resume_thread_exits || curproc->killed){
+        return -1;
+    }
+    
+    // make the thread runnable again 
+    acquire(&ptable.lock);
+    p->state = RUNNABLE;
+    p->chan = 0;
+    release(&ptable.lock);
+
+    return 0;
+}
+
+

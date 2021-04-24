@@ -17,8 +17,7 @@ sys_fork(void)
 
 // sys_clone function copies the arguments to clone from the user process
 // address space to the xv6 kernel memory. The function after copying
-// the values passes the control 
-// Note : xv6 kernel only reads user process arguments on stack.
+// the values passes the control to clone function
 int sys_clone(void) {
     
     // actual clone call prototype : 
@@ -173,6 +172,23 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// sys suspend syspends the current thread execution 
+int
+sys_tsuspend(void) 
+{
+  return tsuspend();
+}
+
+// sys resumes the execution of the thread with given tid
+int 
+sys_tresume(void) 
+{
+  int tid;
+  if(argint(0, &tid) < 0)
+    return -1;
+  return tresume(tid);
 }
 
 

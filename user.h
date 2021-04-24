@@ -32,6 +32,10 @@ int join(int tid);
 int tkill(int tid);
 // kills the all threads in thread group 
 int tgkill(void);
+// thread suspending it's exceution
+int             tsuspend(void);
+// make thread resume it's execution 
+int             tresume(int tid);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -47,7 +51,7 @@ void* malloc(uint);
 void free(void*);
 int atoi(const char*);
 
-// kthreads user library 
+// kthreads user library implementation 
 #define KERNEL_STACK_ALLOC      (1)
 #define SBRK_STACK_ALLOC        (2)
 
@@ -69,4 +73,36 @@ void destory_thread_stack(void **stack);
 int kthread_create(kthread_t *kthread, int func(void *args), void *args);
 int kthread_join(kthread_t *kthread);
 int kthread_exit()__attribute__((noreturn));
+
+// userland spin locks : atomic synchronization primitives
+typedef struct splock {
+    int locked; 
+} splock;
+
+int splock_init();
+int splock_acquire();
+int splock_release();
+
+// semaphore implementation for xv6
+
+// queue node for waiting thread 
+typedef struct node {
+    int tid;
+} node;
+
+// queue of threads suspended from execution
+typedef struct queue {
+    node *head;
+    node *tail;
+    int n;
+} queue;
+
+typedef struct semaphore {
+    int val;
+    splock sl;
+} semaphore;
+
+int semaphore_init(semaphore *s, int initval);
+int semaphore_wait(semaphore *s);
+int semaphore_realse(semaphore *s);
 

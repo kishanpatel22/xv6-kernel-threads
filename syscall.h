@@ -25,4 +25,6 @@
 #define SYS_gettid 24
 #define SYS_tkill  25
 #define SYS_tgkill 26
+#define SYS_tsuspend 27
+#define SYS_tresume  28
 

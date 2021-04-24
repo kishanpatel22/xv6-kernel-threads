@@ -116,10 +116,15 @@ int             join(int tid);
 
 int             growproc(int);
 int             kill(int);
-// implementation of killing thread
+// killing a thread
 int             tkill(int tid);
-// implementation of killing thread group
+// killing whole thread group
 int             tgkill();
+// thread suspending it's exceution
+int             tsuspend(void);
+// make thread resume it's execution 
+int             tresume(int tid);
+
 
 struct cpu*     mycpu(void);
 struct proc*    myproc();
