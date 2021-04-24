@@ -7,7 +7,7 @@
 // The module alos provides implementation of semphores using sping locks
 
 
-// ==================== USERLAN SPINLOCKS ===================================
+// ==================== USERLAND SPINLOCKS ===================================
 
 void init_splock(splock *s) {
     s->locked = 0;
@@ -50,7 +50,7 @@ release_splock(splock *s)
     return;
 }
 
-// ========================== SEMAPHORE =====================================
+// ===================== QUEUE DATA STRUCTURE ================================
 
 void 
 init_queue(queue *q)
@@ -58,17 +58,27 @@ init_queue(queue *q)
     q->front = q->rear = 0;
 }
 
-void
+int 
+isempty(queue q)
+{
+    return q.front == q.rear;
+}
+
+int
 enqueue(queue *q, int value)
 {
+    if((q->front + 1) % MAX_QUEUE_SIZE == q->rear){
+        return -1;
+    }
     q->arr[q->front] = value;
     q->front = (q->front + 1) % MAX_QUEUE_SIZE;
+    return 0;
 }
 
 int
 dequeue(queue *q)
 {
-    if(q->front == q->rear) {
+    if(q->front == q->rear){
         return -1;
     }
     int value = q->arr[q->rear];
@@ -76,4 +86,45 @@ dequeue(queue *q)
     return value;
 }
 
+// ========================== SEMAPHORE =====================================
+
+void 
+semaphore_init(semaphore *s, int initval)
+{
+    s->val = initval;
+    init_queue(&(s->q));
+    init_splock(&(s->sl));
+}
+
+void 
+semaphore_wait(semaphore *s) 
+{
+    acquire_splock(&(s->sl));
+    s->val--;
+    while(s->val < 0){
+        block(s); 
+    }
+    release_splock(&(s->sl));
+}
+
+void
+semaphore_signal(semaphore *s) 
+{
+    acquire_splock(&(s->sl));
+    s->val++;
+    if(!isempty(s->q)){
+        tresume(dequeue(&(s->q))); 
+    }
+    release_splock(&(s->sl));
+}
+
+void 
+block(semaphore *s) 
+{
+    enqueue(&(s->q), gettid());
+    release_splock(&(s->sl));
+    // make the thread sleep  
+    tsuspend();
+    acquire_splock(&(s->sl));
+}
 

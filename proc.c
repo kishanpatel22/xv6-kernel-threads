@@ -277,7 +277,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     if((np = allocproc()) == 0) {
         return -1;
     }
-    
+
     // thread leader in the group of threads executed with same pid
     tleader = THREAD_LEADER(curproc);
  
@@ -389,7 +389,7 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-        
+  
   // thread group leader doing exit kills all the threads in group.
   if(curproc->tid == -1) {
     tgkill();
@@ -479,13 +479,13 @@ join(int tid)
     if(tid == -1){
         return -1;
     }
-
+    
     tleader = THREAD_LEADER(curproc);
 
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader && !p->killed){
+        if(p->tid == tid && p->parent == tleader){
             join_thread_exits = 1; 
             break;
         }
@@ -493,6 +493,7 @@ join(int tid)
 
     // join thread either doesn't exists or it doesn't belong to same group
     if(!join_thread_exits || curproc->killed){
+        cprintf("curproc is killed");
         return -1;
     }
     
@@ -502,6 +503,7 @@ join(int tid)
     for(;;){
         // thread is killed by some other thread in group
         if(curproc->killed){
+            cprintf("curproc is killed");
             release(&ptable.lock);
             return -1;
         }
@@ -731,7 +733,7 @@ tkill(int tid)
       p->killed = 1;  
       // wakeup the process to kill 
       if(p->state == SLEEPING){
-          p->state = RUNNING; 
+        p->state = RUNNABLE; 
       }
       release(&ptable.lock);
       return 0;
@@ -842,7 +844,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d %d %s %s", p->pid, p->tid, state, p->name);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
@@ -867,7 +869,7 @@ tsuspend(void)
     acquire(&ptable.lock);
     sleep(curproc, &ptable.lock); 
     release(&ptable.lock);
-
+    
     return 0;
 }
 

@@ -32,6 +32,8 @@ int join(int tid);
 int tkill(int tid);
 // kills the all threads in thread group 
 int tgkill(void);
+// gets id of currently executing thread 
+int gettid(void);
 // thread suspending it's exceution
 int             tsuspend(void);
 // make thread resume it's execution 
@@ -79,9 +81,9 @@ typedef struct splock {
     uint locked; 
 } splock;
 
-void init_splock(splock*);
-void acquire_splock(splock*);
-void release_splock(splock*);
+void init_splock(splock* s);
+void acquire_splock(splock* s);
+void release_splock(splock* s);
 
 // semaphore implementation for xv6
 
@@ -95,7 +97,8 @@ typedef struct queue {
 } queue;
 
 void init_queue(queue *);
-void enqueue(queue *, int);
+int isempty(queue q);
+int enqueue(queue *, int);
 int dequeue(queue *);
 
 typedef struct semaphore {
@@ -104,7 +107,8 @@ typedef struct semaphore {
     splock sl;
 } semaphore;
 
-int semaphore_init(semaphore *s, int initval);
-int semaphore_wait(semaphore *s);
-int semaphore_realse(semaphore *s);
+void semaphore_init(semaphore *s, int initval);
+void semaphore_wait(semaphore *s);
+void semaphore_signal(semaphore *s);
+void block(semaphore *s);
 

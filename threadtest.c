@@ -664,9 +664,10 @@ kill_test()
     tid = clone(change_secret, 0, 0, &new_secret); 
     // kill the thread 
     tkill(tid);
-    
-    // should be unable to join killed thread
-    if(join(tid) == -1 && global_var != NEW_SECRET){
+    // join killed thread
+    join(tid);
+
+    if(global_var != NEW_SECRET){
         sprintf("thread kill test"); 
     } else{
         eprintf("thread kill test");
@@ -763,7 +764,6 @@ kthread_lib_test()
         }
         thread_count++;
     }
-    
     // join the maximum threads that are created
     for(int i = 0; i < thread_count; i++){
         kthread_join(kth_pool + i);
@@ -781,20 +781,80 @@ kthread_lib_test()
 
 // ===========================================================================
 
+char *thread_str1 = "abc\n";
+char *thread_str2 = "xyz\n";
+
+int tfd;
+semaphore sem;
+
 int
-kthread_attach_detach_test()
+filewrite_func1(void *args)
 {
-    
-    // success
-    return 0;
+    semaphore_wait(&sem);    
+    for(int i = 0; i < strlen(thread_str1); i++) {
+        sleep(10);
+        write(tfd, &thread_str1[i], 1);
+    }
+    semaphore_signal(&sem);    
+    kthread_exit();
 }
 
-// ===========================================================================
+int
+filewrite_func2(void *agrs)
+{
+    semaphore_wait(&sem);    
+    for(int i = 0; i < strlen(thread_str2); i++) {
+        sleep(10);
+        write(tfd, &thread_str2[i], 1);
+    }
+    semaphore_signal(&sem);    
+    kthread_exit();
+}
 
+// the semaphore implementation issues synchronization among threads
+// concurrently try to update and modify a shared resource 
+// TESTCASE : semaphore ensures mutual execlusion among threads modifying data
 int 
 kthread_semaphore_test() 
 {
+    kthread_t th1, th2;
+    char str[128];
+
+    // binary semaphore mutex 
+    semaphore_init(&sem, 1);
+
+    tfd = open("sem.txt", O_RDWR | O_CREATE); 
+    if(tfd == -1){
+        eprintf("cannot open file");
+    }
+
+    kthread_create(&th1, filewrite_func1, 0);
+    kthread_create(&th2, filewrite_func2, 0);
+        
+    kthread_join(&th1);
+    kthread_join(&th2);
+
+    close(tfd);
+        
+    // verifying if synchronization order
+    tfd = open("sem.txt", O_RDONLY); 
     
+    // first str1 should be written 
+    read(tfd, str, strlen(thread_str1));
+    str[strlen(thread_str1)] = '\0';
+    if(strcmp(str, thread_str1) != 0){
+        eprintf("semaphore test");
+    }
+
+    // second str2 should be written 
+    read(tfd, str, strlen(thread_str2));
+    str[strlen(thread_str2)] = '\0';
+    if(strcmp(str, thread_str2) != 0){
+        eprintf("semaphore test");
+    }
+    
+    sprintf("semaphore test");
+
     // success 
     return 0;
 }
@@ -829,7 +889,7 @@ update_func1(void *args)
 int 
 update_func2(void *args) 
 {
-    //acquire_splock(&s);
+    acquire_splock(&s);
     for(int i = 0; i < 5; i++) {
         sleep(10);
         race_arr[race_index] = 20; 
@@ -870,25 +930,26 @@ main(int argc, char *argv[])
     
     // SYSTEM CALL TESTS 
     
-    //clone_join_test();                  // simple clone and join system call
-    //nested_clone_join_test();           // nested clone and join system call
-    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    //peer_relationship_test();           // threads sharing peer to peer relationship
-    //wait_join_test();                   // join and wait both work correctly 
-    //clone_without_join_test();          // clone thread without join 
-    //exec_test();                        // exec test for threads
-    //two_exec_test();                    // exec concurrently done by seperate threads
-    //fork_test();                        // thread calls fork system call
-    //kill_test();                        // kills thread 
-    //event_wait_test();                  // suspend and resume test for threads 
+    clone_join_test();                  // simple clone and join system call
+    nested_clone_join_test();           // nested clone and join system call
+    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    peer_relationship_test();           // threads sharing peer to peer relationship
+    wait_join_test();                   // join and wait both work correctly 
+    clone_without_join_test();          // clone thread without join 
+    exec_test();                        // exec test for threads
+    two_exec_test();                    // exec concurrently done by seperate threads
+    fork_test();                        // thread calls fork system call
+    kill_test();                        // kills thread 
+    event_wait_test();                  // suspend and resume test for threads 
 
     // KTHREAD LIBRARY TESTS
-    //kthread_lib_test();                 // max threads created by kthread lib
-    //kthread_attach_detach_test();       // kthread attach detach
-    //kthread_semaphore_test();           // synchorization using semaphore
-     
+    
+    kthread_lib_test();                 // max threads created by kthread lib
+    kthread_semaphore_test();           // synchorization using semaphore
+
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
-    uspinlock_test();                   // userland spinlock code test
+    
+    //uspinlock_test();                   // userland spinlock code test
 
     exit();
 }
