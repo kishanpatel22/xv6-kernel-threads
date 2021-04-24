@@ -76,29 +76,31 @@ int kthread_exit()__attribute__((noreturn));
 
 // userland spin locks : atomic synchronization primitives
 typedef struct splock {
-    int locked; 
+    uint locked; 
 } splock;
 
-int splock_init();
-int splock_acquire();
-int splock_release();
+void init_splock(splock*);
+void acquire_splock(splock*);
+void release_splock(splock*);
 
 // semaphore implementation for xv6
 
-// queue node for waiting thread 
-typedef struct node {
-    int tid;
-} node;
-
 // queue of threads suspended from execution
+
+#define MAX_QUEUE_SIZE  (1024)
+
 typedef struct queue {
-    node *head;
-    node *tail;
-    int n;
+    int arr[MAX_QUEUE_SIZE];
+    int front, rear;
 } queue;
+
+void init_queue(queue *);
+void enqueue(queue *, int);
+int dequeue(queue *);
 
 typedef struct semaphore {
     int val;
+    queue q;
     splock sl;
 } semaphore;
 

@@ -801,6 +801,69 @@ kthread_semaphore_test()
 
 // ===========================================================================
 
+
+// ===========================================================================
+// ==================== SYNCHRONIZATION ISSUES ==============================
+// ===========================================================================
+
+int race_arr[10], race_index;
+
+// userland spin lock 
+struct splock s;
+
+// updates the global array 
+int 
+update_func1(void *args) 
+{
+    acquire_splock(&s);
+    for(int i = 0; i < 5; i++) {
+        sleep(10);
+        race_arr[race_index] = 10; 
+        race_index++;
+    }
+    release_splock(&s);
+    exit();
+}
+
+// updates the global array 
+int 
+update_func2(void *args) 
+{
+    //acquire_splock(&s);
+    for(int i = 0; i < 5; i++) {
+        sleep(10);
+        race_arr[race_index] = 20; 
+        race_index++;
+    }
+    release_splock(&s);
+    exit();
+}
+
+// since we cannot user xv6 provided spinlock which is meant for xv6 kernel
+// userland spin lock code was written and function test spin lock functionality 
+int 
+uspinlock_test()
+{
+    int tid1, tid2;
+    init_splock(&s);
+
+    tid1 = clone(update_func1, 0, 0, 0);
+    tid2 = clone(update_func2, 0, 0, 0);
+    
+    join(tid1);
+    join(tid2);
+    
+    for(int i = 0; i < 10; i++) {
+        printf(1, "%d  ", race_arr[i]);
+    }
+    printf(1, "\n");
+
+    exit();
+}
+// ===========================================================================
+
+// ===========================================================================
+
 int
 main(int argc, char *argv[])
 {
@@ -823,11 +886,10 @@ main(int argc, char *argv[])
     //kthread_lib_test();                 // max threads created by kthread lib
     //kthread_attach_detach_test();       // kthread attach detach
     //kthread_semaphore_test();           // synchorization using semaphore
-    
-
-
+     
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
-    
+    uspinlock_test();                   // userland spinlock code test
+
     exit();
 }
 
