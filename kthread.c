@@ -83,7 +83,7 @@ kthread_join(kthread_t *kthread)
     int jtid = join(kthread->tid);
 
     // destory the stack allocated for the thread 
-    destory_thread_stack(kthread->tstack);
+    destory_thread_stack(&(kthread->tstack));
 
     kthread->state = DEAD;
     return jtid;
@@ -102,7 +102,7 @@ kthread_cancel(kthread_t *kthread) {
     kill(kthread->tid);
 
     // deallocate stack of thread exeuction 
-    destory_thread_stack(kthread->tstack);
+    destory_thread_stack(&(kthread->tstack));
     
     // thread has died 
     kthread->state = DEAD;

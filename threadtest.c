@@ -142,6 +142,17 @@ clone_join_test()
 
 // ===========================================================================
 
+// wrong ways to call clone and join system calls test 
+int 
+wrong_syscall_test()
+{
+    
+    // success
+    return 0;
+}
+
+// ===========================================================================
+
 int 
 nest_func3(void *args) 
 {
@@ -765,6 +776,7 @@ stack_smash_test()
 // ===========================================================================
 
 #define MAX_THREAD_TEST         (1024)
+#define TOO_MANY_THREADS        (100)
 #define MAX_THREAD_COUNT        (64 - 3)
 
 int 
@@ -777,13 +789,13 @@ kthread_test_func()
 // tests for maximum number of threading that library can create 
 // TESTCASE : maximum number of threads that can be created 
 int 
-kthread_lib_test() 
+kthread_lib_max_thread_test() 
 {
     kthread_t kth_pool[MAX_THREAD_TEST];
     int thread_count = 0;
 
     // creating the threads using kthread library
-    for(int i = 0; i < MAX_THREAD_TEST; i++){
+    for(int i = 0; i < TOO_MANY_THREADS; i++){
         if(kthread_create(kth_pool + i, kthread_test_func, 0) == -1){
             break; 
         }
@@ -797,15 +809,151 @@ kthread_lib_test()
 
     // check for number of threads created 
     if(thread_count < MAX_THREAD_COUNT) {
-        eprintf("kthread lib test");
+        eprintf("kthread lib max thread ");    
     } 
-    
-    sprintf("kthread lib test");
+    sprintf("kthread lib max thread ");    
     // success 
     return 0;
 }
 
 // ===========================================================================
+
+#define N                   (6)
+#define M                   (10)
+#define P                   (10)
+
+#define MAGIC_MULTIPLE      (10)
+
+typedef struct matrixargs{
+    int **a, **b, **c;  // matrix a, b, and c
+    int row;            // i is row of matrix a
+    int col;            // j is column of matrix b
+    int m;              // num of rows in a = num of columns in b
+} matrixargs;
+
+void
+print_matrix(int **mat, int n, int m) 
+{
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < m; j++){
+            printf(1, "%d ", mat[i][j]);
+        }
+        printf(1, "\n");
+    }
+    printf(1, "\n");
+}
+
+int **
+get_matrix(int n, int m) {
+    int **mat = (int **)malloc(sizeof(int *) * n);
+    if(mat == 0){
+        eprintf("malloc failed");
+    }
+    for(int i = 0; i < n; i++) {
+        mat[i] = (int *)malloc(sizeof(int) *m);
+        if(mat[i] == 0){
+            eprintf("malloc failed");
+        }
+    }
+    return mat;
+}
+
+int
+multiply_row_col(void *args)
+{
+    matrixargs *ptr = (matrixargs *)args;
+    int i, j, m;
+    i = ptr->row, j = ptr->col;
+    m = ptr->m;
+
+    ptr->c[i][j] = 0;
+    for(int k = 0; k < m; k++){
+        ptr->c[i][j] += ptr->a[i][k] * ptr->b[k][j];
+    }
+    kthread_exit();
+}
+
+
+// multhreading test gives a stress test for the kthread library which
+// implements one to one mapping. The threading library is used for 
+// doing matrix multiplcation (C = A x B) by creating some 60 threads
+int 
+kthread_lib_multithreading_test()
+{
+    int **arr = get_matrix(N, M);
+    int **brr = get_matrix(M, P);
+    int **crr = get_matrix(N, P);
+
+    // arguments to be passed for matrix multiplication
+    matrixargs args[N * P], temp; 
+    kthread_t kthread_pool[N * P];
+
+    // initializing matrix a
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < M; j++){
+            arr[i][j] = i * M + j;
+        }
+    }
+    // initializing matrix b as identity matrix * MAGIC_MULTIPLE
+    for(int i = 0; i < M; i++){
+        for(int j = 0; j < P; j++){
+            if(i == j){
+                brr[i][j] = MAGIC_MULTIPLE;
+            } else{
+                brr[i][j] = 0;
+            }
+        }
+    }
+    
+    // initialization of matrix c
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < P; j++){
+            crr[i][j] = MAGIC_MULTIPLE;
+        }
+    }
+
+    // matrices 
+    temp.a = arr;
+    temp.b = brr;
+    temp.c = crr;
+    temp.m = M;
+    
+    // matrix multiplication using kthreadlibrary
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < P; j++){
+            args[i * P + j] = temp;
+            args[i * P + j].row = i;
+            args[i * P + j].col = j;
+            if(kthread_create(kthread_pool + i * P + j, multiply_row_col,
+                              args + i * P + j) == -1){
+                eprintf("multithreading test"); 
+            }
+        }
+    }
+    
+    // waiting for all threads to complete 
+    for(int i = 0; i < N * P; i++){
+        if(kthread_join(kthread_pool + i)== -1){
+            eprintf("multithreading test"); 
+        }
+    }
+
+    // verifying if the matrix multiplication is correct 
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < P; j++){
+            if(crr[i][j] != arr[i][j] * MAGIC_MULTIPLE){
+                eprintf("multithreading test"); 
+            }
+        }
+    }
+    sprintf("multithreading test");
+    // success
+    return 0;
+}
+
+
+// ===========================================================================
+
 char *thread_str1 = "abc\n";
 char *thread_str2 = "xyz\n";
 
@@ -965,29 +1113,32 @@ main(int argc, char *argv[])
     
     // SYSTEM CALL TESTS 
     
-    clone_join_test();                  // simple clone and join system call
-    nested_clone_join_test();           // nested clone and join system call
-    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    peer_relationship_test();           // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    clone_without_join_test();          // clone thread without join 
-    exec_test();                        // exec test for threads
-    two_exec_test();                    // exec concurrently done by seperate threads
-    fork_test();                        // thread calls fork system call
-    kill_test();                        // kills thread 
-    event_wait_test();                  // suspend and resume test for threads 
-    stack_smash_test();                 // stack smash detection for threads
+    //clone_join_test();                  // simple clone and join system call
+    //wrong_syscall_test();               // wrong ways to call clone and join
+    //nested_clone_join_test();           // nested clone and join system call
+    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    //peer_relationship_test();           // threads sharing peer to peer relationship
+    //wait_join_test();                   // join and wait both work correctly 
+    //clone_without_join_test();          // clone thread without join 
+    //exec_test();                        // exec test for threads
+    //two_exec_test();                    // exec concurrently done by seperate threads
+    //fork_test();                        // thread calls fork system call
+    //kill_test();                        // kills thread 
+    //event_wait_test();                  // suspend and resume test for threads 
+    //stack_smash_test();                 // stack smash detection for threads
 
     // KTHREAD LIBRARY TESTS
     
-    kthread_lib_test();                 // max threads created by kthread lib
-    kthread_semaphore_test();           // synchorization using semaphore
-
+    // stress tests
+    //kthread_lib_max_thread_test();      // max threads created by kthread lib
+    //kthread_lib_multithreading_test();  // multithreaded program written for test
+    //kthread_semaphore_test();           // synchorization using semaphore
 
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
-    uspinlock_test();                   // userland spinlock code test
+    //uspinlock_test();                   // userland spinlock code test
 
     exit();
 }
+
 
