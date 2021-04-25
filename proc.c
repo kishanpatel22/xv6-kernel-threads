@@ -216,7 +216,7 @@ fork(void)
   
   // size same as thread leader
   np->sz = tleader->sz;
- 
+
   // parent process is the thread leader 
   // process can have parent as processes and not threads
   np->parent = tleader;
@@ -271,7 +271,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     struct proc *curproc = myproc(), *tleader;
     char *guard_page;
     uint sp, stack_args[2];
-    
+        
     // modify or duplicate all the fileds of struct proc accordingly 
     // to create a child process which is clone of the current process 
     if((np = allocproc()) == 0) {
@@ -289,6 +289,9 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
 
         // modify the page directory entry by extending the virtual address 
         if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
+            kfree(np->kstack);
+            np->kstack = 0;
+            np->state = UNUSED;
             return -1; 
         }
         // no need to update the size of the process 
@@ -485,7 +488,7 @@ join(int tid)
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader){
+        if(p->tid == tid && p->parent == tleader && !p->killed){
             join_thread_exits = 1; 
             break;
         }
@@ -493,7 +496,6 @@ join(int tid)
 
     // join thread either doesn't exists or it doesn't belong to same group
     if(!join_thread_exits || curproc->killed){
-        cprintf("curproc is killed");
         return -1;
     }
     
@@ -503,7 +505,6 @@ join(int tid)
     for(;;){
         // thread is killed by some other thread in group
         if(curproc->killed){
-            cprintf("curproc is killed");
             release(&ptable.lock);
             return -1;
         }
@@ -722,10 +723,13 @@ int
 tkill(int tid) 
 {
   struct proc *curproc = myproc(), *p;
+  int kill_thread_exits;
+
   // cannot kill the main thread 
   if(tid == -1)
     return -1;
-
+    
+  kill_thread_exits = 0;
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     // threads share same pid
@@ -735,12 +739,34 @@ tkill(int tid)
       if(p->state == SLEEPING){
         p->state = RUNNABLE; 
       }
-      release(&ptable.lock);
-      return 0;
+      kill_thread_exits = 1;
+      break;
     }  
   }
-  release(&ptable.lock);
-  return -1;  
+  if(!kill_thread_exits || curproc->killed){
+    release(&ptable.lock);
+    return -1;
+  }
+  for(;;){
+    if(p->state == ZOMBIE){
+      kfree(p->kstack);
+      p->kstack = 0;
+      if(p->tstackalloc){
+        freecloneuvm(p->pgdir, p->tstack);
+      }
+      p->pid = 0;
+      p->tid = 0;
+      p->tstack = 0;
+      p->parent = 0;
+      p->name[0] = 0;
+      p->killed = 0;
+      p->state = UNUSED;
+      release(&ptable.lock);
+      return 0;
+    } 
+    sleep(THREAD_LEADER(curproc), &ptable.lock);
+  }
+  return 0; 
 }
 
 // process exit must call tgkill, before becoming ZOMBIE
@@ -815,7 +841,6 @@ tgkill(void)
     // successfully killed all threads in group
     return 0;
 }
-
 
 //PAGEBREAK: 36
 // Print a process listing to console.  For debugging.

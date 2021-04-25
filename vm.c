@@ -370,7 +370,6 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
         }
         va = va - PGSIZE;
     }
-
     // kernel cannot currupt the process memory 
     // could happen in case of stack crossing heap 
     if(va < (char *)size) {
@@ -379,7 +378,7 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
 
     // stack base address 
     tstack = va + PGSIZE;  
-
+    
     // now the new allocation of the stack for the cloned process
     if((stack_pte = walkpgdir(pgdir, va, 1)) == 0) {
         return 0; 
@@ -399,6 +398,7 @@ cloneuvm(pde_t* pgdir, uint size, char *guard_page)
     }    
     // allocate page table entry for guard page
     if((pte = walkpgdir(pgdir, va, 1)) == 0) {
+        kfree(stack_page);
         return 0;
     }
     // the guard page table entry of the original process 
@@ -428,7 +428,7 @@ freecloneuvm(pde_t *pgdir, char *tstack)
     if((pte = walkpgdir(pgdir, stack_page, 0)) == 0) {
         panic("clone process has no stack !!");
     }
-    page = (char *)V2P(PTE_ADDR(*pte));
+    page = (char *)P2V(PTE_ADDR(*pte));
     kfree(page); 
     *pte = 0;
      

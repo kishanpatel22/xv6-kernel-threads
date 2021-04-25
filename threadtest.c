@@ -329,14 +329,14 @@ int __open_fd__, __peer_id1__, __peer_id2__;
 
 int peer_fun2(void *agrs) 
 {
-    sleep(2);
+    sleep(100);
     write(__open_fd__, PEER2_STR, PEER2_STR_LEN);
     exit();
 }
 
 int peer_fun1(void *args) 
 {
-    sleep(2);
+    sleep(100);
     // waiting for peer 2 to complete (although peer 1 is not parent)
     join(__peer_id2__);
     write(__open_fd__, PEER1_STR, PEER1_STR_LEN);
@@ -357,6 +357,7 @@ peer_relationship_test()
     if(__open_fd__ == -1) {
         eprintf("error cannot open file");
     }
+    
     __peer_id1__ = clone(peer_fun1, 0, 0, 0);
     __peer_id2__ = clone(peer_fun2, 0, 0, 0);
     
@@ -662,12 +663,12 @@ kill_test()
     
     // create thread that modifies global variable 
     tid = clone(change_secret, 0, 0, &new_secret); 
+
     // kill the thread 
     tkill(tid);
-    // join killed thread
-    join(tid);
-
-    if(global_var != NEW_SECRET){
+    
+    // unable to join killed thread
+    if(join(tid) == -1 && global_var != NEW_SECRET){
         sprintf("thread kill test"); 
     } else{
         eprintf("thread kill test");
@@ -732,7 +733,31 @@ event_wait_test()
     return 0;
 }
 
+// ===========================================================================
 
+// routiune does infinite recursion and grows thread stack
+int 
+infinite_recursion(void *agrs) 
+{
+    infinite_recursion(0);
+    exit();
+}
+
+// when threads are created without passing stack parameter to clone system
+// call the kernel takes care of allocating stack page along with gaurd page
+// threads accessing stack address below the stack page must be terminated 
+// TESTCASE : an infinite recursion thread must be terminated by xv6
+int
+stack_smash_test() 
+{
+    int tid = clone(infinite_recursion, 0, 0, 0);
+    join(tid);
+    sprintf("stack smash test");
+    // succcess
+    return 0;
+}
+
+// ===========================================================================
 // ===========================================================================
 // ============================ KTHREAD LIBRARY ==============================
 // ===========================================================================
@@ -764,6 +789,7 @@ kthread_lib_test()
         }
         thread_count++;
     }
+    
     // join the maximum threads that are created
     for(int i = 0; i < thread_count; i++){
         kthread_join(kth_pool + i);
@@ -780,7 +806,6 @@ kthread_lib_test()
 }
 
 // ===========================================================================
-
 char *thread_str1 = "abc\n";
 char *thread_str2 = "xyz\n";
 
@@ -866,6 +891,10 @@ kthread_semaphore_test()
 // ==================== SYNCHRONIZATION ISSUES ==============================
 // ===========================================================================
 
+#define VAL1        (10)
+#define VAL2        (20)
+#define MAX_SIZE    (10)
+
 int race_arr[10], race_index;
 
 // userland spin lock 
@@ -876,9 +905,9 @@ int
 update_func1(void *args) 
 {
     acquire_splock(&s);
-    for(int i = 0; i < 5; i++) {
+    for(int i = 0; i < MAX_SIZE / 2; i++) {
         sleep(10);
-        race_arr[race_index] = 10; 
+        race_arr[race_index] = VAL1; 
         race_index++;
     }
     release_splock(&s);
@@ -890,9 +919,9 @@ int
 update_func2(void *args) 
 {
     acquire_splock(&s);
-    for(int i = 0; i < 5; i++) {
+    for(int i = 0; i < MAX_SIZE / 2; i++) {
         sleep(10);
-        race_arr[race_index] = 20; 
+        race_arr[race_index] = VAL2; 
         race_index++;
     }
     release_splock(&s);
@@ -913,11 +942,17 @@ uspinlock_test()
     join(tid1);
     join(tid2);
     
-    for(int i = 0; i < 10; i++) {
-        printf(1, "%d  ", race_arr[i]);
+    // first half of array must be eqaul to value 1
+    // later half of array must be equal to value 2
+    for(int i = 0; i < MAX_SIZE; i++){
+        if(i < MAX_SIZE / 2 && race_arr[i] != VAL1){
+            eprintf("spinlock test");
+        } 
+        if(i >= MAX_SIZE / 2 && race_arr[i] != VAL2){
+            eprintf("spinlock test");
+        }
     }
-    printf(1, "\n");
-
+    sprintf("spinlock test");
     exit();
 }
 // ===========================================================================
@@ -941,18 +976,18 @@ main(int argc, char *argv[])
     fork_test();                        // thread calls fork system call
     kill_test();                        // kills thread 
     event_wait_test();                  // suspend and resume test for threads 
+    stack_smash_test();                 // stack smash detection for threads
 
     // KTHREAD LIBRARY TESTS
     
     kthread_lib_test();                 // max threads created by kthread lib
     kthread_semaphore_test();           // synchorization using semaphore
 
+
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
-    //uspinlock_test();                   // userland spinlock code test
+    uspinlock_test();                   // userland spinlock code test
 
     exit();
 }
-
-
 
