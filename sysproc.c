@@ -27,12 +27,12 @@ int sys_clone(void) {
     char *child_stack, *args;
     int flags;
 
-    // read the function pointer 
+    // read the function pointer
     if(argptr(0, (char **)&func, 0) == -1) {
         return -1;
     }
     
-    // read the child stack address 
+    // read the child stack address
     if(argint(1, (int *)&child_stack) == -1) {
         return -1;
     }
@@ -47,6 +47,11 @@ int sys_clone(void) {
         return -1;
     }
     
+    // the arguments passed to clone must have address below size
+    if(THREAD_LEADER(myproc())->sz < (uint)args) {
+        return -1;
+    }
+
     // clone system call supports stack address space which are one page alligned 
     if(THREAD_LEADER(myproc())->sz <= (uint)child_stack && 
        THREAD_LEADER(myproc())->sz < (uint)child_stack - PGSIZE) {

@@ -142,11 +142,59 @@ clone_join_test()
 
 // ===========================================================================
 
+#define BAD_ADDRESS         ((void *)0xfffffff)
+
+// although the function exits in thread address space
+// the function never gets called since arguments passed 
+// to function are invalid and clone system call fails
+int 
+not_arguments(void *args)
+{
+    int *ptr = (int *)args;
+    *ptr = *ptr + 10;
+    exit();
+}
+
 // wrong ways to call clone and join system calls test 
 int 
 wrong_syscall_test()
-{
+{   
+    int tid, temp = 0;
     
+    // passing invalid arguments which are not in address space
+    tid = clone(not_arguments, 0, 0, BAD_ADDRESS);
+    if(tid != -1){
+        eprintf("wrong system call clone arguments");
+    }
+    
+    // passing invalid function pointer address 
+    tid = clone(BAD_ADDRESS, 0, 0, 0);
+    if(tid != -1){
+        eprintf("wrong system call clone function pointer");
+    }
+       
+    // passing invalid stack child address 
+    tid = clone(not_arguments, BAD_ADDRESS, 0, &temp);
+    if(tid != -1){
+        eprintf("wrong system call clone stack address");
+    }
+
+    // invalid flag passing 
+    
+
+    // join system call for any random thread id
+    tid = 1234;
+    if(join(tid) != -1){
+        eprintf("wrong system call join random thread id");
+    }
+
+    // join system call for group leader (thread group leader has tid = -1)
+    tid = -1;
+    if(join(tid) != -1){
+        eprintf("wrong system call join random thread id");
+    }
+    
+    sprintf("wrong system call clone and join");
     // success
     return 0;
 }
@@ -1113,30 +1161,30 @@ main(int argc, char *argv[])
     
     // SYSTEM CALL TESTS 
     
-    //clone_join_test();                  // simple clone and join system call
-    //wrong_syscall_test();               // wrong ways to call clone and join
-    //nested_clone_join_test();           // nested clone and join system call
-    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    //peer_relationship_test();           // threads sharing peer to peer relationship
-    //wait_join_test();                   // join and wait both work correctly 
-    //clone_without_join_test();          // clone thread without join 
-    //exec_test();                        // exec test for threads
-    //two_exec_test();                    // exec concurrently done by seperate threads
-    //fork_test();                        // thread calls fork system call
-    //kill_test();                        // kills thread 
-    //event_wait_test();                  // suspend and resume test for threads 
-    //stack_smash_test();                 // stack smash detection for threads
+    clone_join_test();                  // simple clone and join system call
+    wrong_syscall_test();               // wrong ways to call clone and join
+    nested_clone_join_test();           // nested clone and join system call
+    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    peer_relationship_test();           // threads sharing peer to peer relationship
+    wait_join_test();                   // join and wait both work correctly 
+    clone_without_join_test();          // clone thread without join 
+    exec_test();                        // exec test for threads
+    two_exec_test();                    // exec concurrently done by seperate threads
+    fork_test();                        // thread calls fork system call
+    kill_test();                        // kills thread 
+    event_wait_test();                  // suspend and resume test for threads 
+    stack_smash_test();                 // stack smash detection for threads
 
     // KTHREAD LIBRARY TESTS
     
     // stress tests
-    //kthread_lib_max_thread_test();      // max threads created by kthread lib
-    //kthread_lib_multithreading_test();  // multithreaded program written for test
-    //kthread_semaphore_test();           // synchorization using semaphore
+    kthread_lib_max_thread_test();      // max threads created by kthread lib
+    kthread_lib_multithreading_test();  // multithreaded program written for test
+    kthread_semaphore_test();           // synchorization using semaphore
 
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
-    //uspinlock_test();                   // userland spinlock code test
+    uspinlock_test();                   // userland spinlock code test
 
     exit();
 }
