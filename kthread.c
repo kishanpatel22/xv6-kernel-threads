@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "user.h"
 #include "fcntl.h"
+#include "cflags.h"
 
 // module contains userland threading library which creates
 // threads using the underlying system calls like clone and join
@@ -59,7 +60,7 @@ kthread_create(kthread_t *kthread, int func(void *args), void *args)
     }
     
     // cannot create thread 
-    if((kthread->tid = clone(func, kthread->tstack, 0, args)) == -1) {
+    if((kthread->tid = clone(func, kthread->tstack, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, args)) == -1) {
         destory_thread_stack(&(kthread->tstack));
         kthread->state = DEAD;
         return -1;

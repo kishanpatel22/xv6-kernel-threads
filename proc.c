@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "cflags.h"
 
 // ptable external varaible 
 struct table ptable;
@@ -193,70 +194,7 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
-  struct proc *np;
-  struct proc *curproc = myproc(), *tleader;
-
-  // Allocate process.
-  if((np = allocproc()) == 0){
-    return -1;
-  }
-    
-  // thread leader in the group
-  tleader = THREAD_LEADER(curproc);
-    
-  // Copy process state from proc. 
-  // Copy out text / data + heap + stack region of process from thread leader
-  if((np->pgdir = copyuvm(tleader->pgdir, tleader->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
-  }
-  
-  // size same as thread leader
-  np->sz = tleader->sz;
-
-  // parent process is the thread leader 
-  // process can have parent as processes and not threads
-  np->parent = tleader;
-
-  // the execution stack of the threads
-  np->tstack = tleader->tstack;
- 
-  // trap frame is same as current thread
-  *np->tf = *curproc->tf;
-  
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
-
-  // thread executing make fork system call 
-  // copy out the stack of thread which called fork 
-  // kernel thread implementation copies only thread which
-  // called fork not all threads in process address space
-  if(curproc->tid != -1) {
-    if(copy_thread_stack(np->pgdir, np->tstack - PGSIZE, tleader->pgdir, curproc->tstack - PGSIZE) == -1) {
-      return -1; 
-    }
-    np->tf->esp = (uint)np->tstack - ((uint)curproc->tstack - np->tf->esp);
-  } 
-
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
-      np->ofile[i] = filedup(curproc->ofile[i]);
-  np->cwd = idup(curproc->cwd);
-
-  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-
-  pid = np->pid;
-
-  acquire(&ptable.lock);
-
-  np->state = RUNNABLE;
-
-  release(&ptable.lock);
-
-  return pid;
+    return clone((void *)myproc()->tf->eip, 0, CLONE_FS | CLONE_FILES, 0); 
 }
 
 // clone system call implementation for xv6 
@@ -270,6 +208,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
     struct proc *np;
     struct proc *curproc = myproc(), *tleader;
     char *guard_page;
+    int retid;
     uint sp, stack_args[2];
         
     // modify or duplicate all the fileds of struct proc accordingly 
@@ -280,91 +219,142 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
 
     // thread leader in the group of threads executed with same pid
     tleader = THREAD_LEADER(curproc);
- 
-    // kernel allocates the page for the stack 
-    if(child_stack == 0) {
-
-        // guard page of the group leader thread 
-        guard_page = tleader->tstack - 2 * PGSIZE;
-
-        // modify the page directory entry by extending the virtual address 
-        if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
-            kfree(np->kstack);
-            np->kstack = 0;
-            np->state = UNUSED;
-            return -1; 
-        }
-        // no need to update the size of the process 
-        
-        // the stack is allocated by the kernel 
-        np->tstackalloc = 1;
-
-    } 
-    // user allocated stack for children
-    else {
-        np->tstack = (char *)child_stack;
-    }
-
-    // page directory will be same, since child shares virtual memory 
-    np->pgdir = curproc->pgdir; 
     
     // size of the child clone is same as parent 
     np->sz = tleader->sz;
-
-    // build the handcrafted stack frame for the function 
-    stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
-    stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
     
-    // point the sp to the child stack
-    sp = (uint)np->tstack;
-    sp -= 2 * 4;
- 
-    // add the return address and argument pointer on the stack 
-    if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
-        kfree(np->kstack);
-        np->kstack = 0;
-        np->state = UNUSED;
-        return -1;
+    // the parent of the child process 
+    np->parent = tleader;
+    
+    // virtual address space 
+
+    // child and parent sharing same virtual address space 
+    if(flags & CLONE_VM) {
+        // page directory will be same, since child shares virtual memory 
+        np->pgdir = tleader->pgdir; 
+    } 
+    // child and parent not sharing same virtual address space
+    else {
+        // Copy out text / data + heap + stack region of process from thread leader
+        if((np->pgdir = copyuvm(tleader->pgdir, tleader->sz)) == 0){
+            kfree(np->kstack);
+            np->kstack = 0;
+            np->state = UNUSED;
+            return -1;
+        }
     }
     
-    *np->tf = *curproc->tf;             // copy the trap frame 
+    // child stack for execution 
+    
+    // child process sharing the virtual address space 
+    if((CLONE_VM & flags)) {
+        // the child process needs stack for execution 
+        if(!child_stack) {
+            // guard page of the group leader thread 
+            guard_page = tleader->tstack - 2 * PGSIZE;
+            // modify the page directory entry by extending the virtual address 
+            if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
+                kfree(np->kstack);
+                np->kstack = 0;
+                np->state = UNUSED;
+                return -1; 
+            }
+            // the stack is allocated by the kernel 
+            np->tstackalloc = 1;
+        } 
+        // allocated stack for child process 
+        else {
+            np->tstack = (char *)child_stack;
+        }
+    }
+    // child process not sharing the virtual address space
+    else {
+        np->tstack = tleader->tstack;
+        // thread trying to clone without sharing any virtual address space 
+        if(curproc != tleader) {
+            if(copy_thread_stack(np->pgdir, np->tstack - PGSIZE, tleader->pgdir, curproc->tstack - PGSIZE) == -1) {
+                return -1; 
+            }
+        }
+    }
+
+    // context of parent for child process 
+ 
+    // trap frame 
+    *np->tf = *curproc->tf;
+   
+    // sharing of virtual address space 
+    if((flags & CLONE_VM)) {
+        // build the handcrafted stack frame for the function 
+        stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
+        stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
+        
+        // point the sp to the child stack
+        sp = (uint)np->tstack;
+        sp -= 2 * 4;
+ 
+        // add the return address and argument pointer on the stack 
+        if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
+            kfree(np->kstack);
+            np->kstack = 0;
+            np->state = UNUSED;
+            return -1;
+        }
+    } 
+    // not sharing the same virtual address space 
+    else {
+        // Clear %eax so that fork returns 0 in the child.
+        np->tf->eax = 0;
+        if(curproc != tleader) {
+            np->tf->esp = (uint)np->tstack - ((uint)curproc->tstack - np->tf->esp);
+        }
+        sp = np->tf->esp;
+    } 
+    
+    // change of execution point depending upon the flag passed 
     np->tf->eip = (uint)func;           // change instruction pointer for execution 
     np->tf->esp = sp;                   // change stack pointer for execution 
     
-    if(curproc->tid == -1) {
-        // parent is the thread group leader (main process)
-        np->parent = curproc;
-    } else {
-        // parent itself is a thread 
-        np->parent = curproc->parent;
-    }
-    
-    // copy all the open file descriptors from the file table 
-    for(uint i = 0; i < NOFILE; i++) {
-        if(curproc->ofile[i]) {
-            np->ofile[i] = filedup(curproc->ofile[i]);
+    if((flags & CLONE_FILES)) {
+        // copy all the open file descriptors from the file table 
+        for(uint i = 0; i < NOFILE; i++) {
+            if(curproc->ofile[i]) {
+                np->ofile[i] = filedup(curproc->ofile[i]);
+            }
         }
     }
-    np->cwd = idup(curproc->cwd);
+    
+    if((flags & CLONE_FS)) {
+        np->cwd = idup(curproc->cwd);
+    }
     
     // name of the child process is same as that of the original process 
     safestrcpy(np->name, curproc->name, sizeof(curproc->name));
- 
+    
+    if((flags & CLONE_THREAD)) {
+        // child process formed would be thread, thus pid is same as thread id
+        np->tid = np->pid;
+        
+        // pid of the clone child process is same as the parent process 
+        np->pid = curproc->pid;
+
+        retid = np->tid;
+    } else {
+        // the child process is thread leader in different thread group
+        np->tid = -1;
+        
+        retid = np->pid;
+    }
+    
     acquire(&ptable.lock);
     
     // child process state is set to runnable for scheduling
     np->state = RUNNABLE;
     
-    // child process formed would be thread, thus pid is same as thread id
-    np->tid = np->pid;
-    
-    // pid of the clone child process is same as the parent process 
-    np->pid = curproc->pid;
-
     release(&ptable.lock);
 
     // returns the thread id of the child process 
-    return np->tid;
+    return retid;
 }
 
 // Exit the current process.  Does not return.

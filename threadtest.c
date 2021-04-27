@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "user.h"
 #include "fcntl.h"
+#include "cflags.h"
 
 #define TSTACK_SIZE     (4096)
 
@@ -195,6 +196,28 @@ wrong_syscall_test()
     }
     
     sprintf("wrong system call clone and join");
+    // success
+    return 0;
+}
+
+// ===========================================================================
+
+int
+flag_test_func(void *args)
+{
+    sleep(100);
+    printf(1, "I was called atleast\n");
+    exit();
+}
+
+
+// clone flags arguments are shown as given below
+int 
+syscall_flags_test()
+{
+    int tid = clone(flag_test_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
+    join(tid);
+    
     // success
     return 0;
 }
@@ -684,8 +707,8 @@ int
 fork_test() 
 {
     // creates thread one for executing fork and one for increamenting global variable
-    not_fork_func_id = clone(not_fork_func, 0, 0, 0);
-    fork_func_id = clone(fork_func, 0, 0, 0);
+    not_fork_func_id = clone(not_fork_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
+    fork_func_id = clone(fork_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
     
     // join thread 
     join(fork_func_id);
@@ -1002,8 +1025,8 @@ kthread_lib_multithreading_test()
 
 // ===========================================================================
 
-char *thread_str1 = "abc\n";
-char *thread_str2 = "xyz\n";
+char *thread_str1 = "abcefg\n";
+char *thread_str2 = "xyzlmn\n";
 
 int tfd;
 semaphore sem;
@@ -1013,8 +1036,8 @@ filewrite_func1(void *args)
 {
     semaphore_wait(&sem);    
     for(int i = 0; i < strlen(thread_str1); i++) {
-        sleep(10);
         write(tfd, &thread_str1[i], 1);
+        sleep(10);
     }
     semaphore_signal(&sem);    
     kthread_exit();
@@ -1025,8 +1048,8 @@ filewrite_func2(void *agrs)
 {
     semaphore_wait(&sem);    
     for(int i = 0; i < strlen(thread_str2); i++) {
-        sleep(10);
         write(tfd, &thread_str2[i], 1);
+        sleep(10);
     }
     semaphore_signal(&sem);    
     kthread_exit();
@@ -1074,8 +1097,9 @@ kthread_semaphore_test()
         eprintf("semaphore test");
     }
     
-    sprintf("semaphore test");
+    close(tfd);
 
+    sprintf("semaphore test");
     // success 
     return 0;
 }
@@ -1161,30 +1185,31 @@ main(int argc, char *argv[])
     
     // SYSTEM CALL TESTS 
     
-    clone_join_test();                  // simple clone and join system call
-    wrong_syscall_test();               // wrong ways to call clone and join
-    nested_clone_join_test();           // nested clone and join system call
-    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    peer_relationship_test();           // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    clone_without_join_test();          // clone thread without join 
-    exec_test();                        // exec test for threads
-    two_exec_test();                    // exec concurrently done by seperate threads
+    //clone_join_test();                  // simple clone and join system call
+    //wrong_syscall_test();               // wrong ways to call clone and join
+    //syscall_flags_test();               // flags passed to system call
+    //nested_clone_join_test();           // nested clone and join system call
+    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    //peer_relationship_test();           // threads sharing peer to peer relationship
+    //wait_join_test();                   // join and wait both work correctly 
+    //clone_without_join_test();          // clone thread without join 
+    //exec_test();                        // exec test for threads
+    //two_exec_test();                    // exec concurrently done by seperate threads
     fork_test();                        // thread calls fork system call
-    kill_test();                        // kills thread 
-    event_wait_test();                  // suspend and resume test for threads 
-    stack_smash_test();                 // stack smash detection for threads
+    //kill_test();                        // kills thread 
+    //event_wait_test();                  // suspend and resume test for threads 
+    //stack_smash_test();                 // stack smash detection for threads
 
     // KTHREAD LIBRARY TESTS
-    
     // stress tests
-    kthread_lib_max_thread_test();      // max threads created by kthread lib
-    kthread_lib_multithreading_test();  // multithreaded program written for test
-    kthread_semaphore_test();           // synchorization using semaphore
+     
+    //kthread_lib_max_thread_test();      // max threads created by kthread lib
+    //kthread_lib_multithreading_test();  // multithreaded program written for test
+    //kthread_semaphore_test();           // synchorization using semaphore
 
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
-    uspinlock_test();                   // userland spinlock code test
+    //uspinlock_test();                   // userland spinlock code test
 
     exit();
 }
