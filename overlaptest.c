@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "user.h"
 #include "fcntl.h"
+#include "cflags.h"
 
 #define eprintf(fmt, ...)                                                   \
     printf(1, fmt ": FAILED"                                                \
@@ -54,12 +55,12 @@ stack_heap_overlap_test()
         eprintf("malloc failed");
         exit();
     }
-    tid1 = clone(sh_overlap_func, 0, 0, 0);
+    tid1 = clone(sh_overlap_func, 0, TFLAGS, 0);
     if(tid1 == -1){
         eprintf("stack heap overlap");
         exit();
     }
-    tid2 = clone(sh_overlap_func, 0, 0, 0);
+    tid2 = clone(sh_overlap_func, 0, TFLAGS, 0);
     if(tid2 != -1) {
         eprintf("stack heap overlap");
     }
@@ -91,7 +92,7 @@ heap_stack_overlap_test()
 {
     void *mem_buffer;
     uint mem_size = 200 * MB - 16 * KB;
-    int tid1 = clone(hs_overlap_func, 0, 0, 0);
+    int tid1 = clone(hs_overlap_func, 0, TFLAGS, 0);
     
     mem_buffer = malloc(mem_size);
     if(mem_buffer != 0){

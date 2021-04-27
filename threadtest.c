@@ -116,8 +116,8 @@ clone_join_test()
     }
 
     // creating threads for sorting concurrently 
-    left_tid  = clone(sort, cstack1 + TSTACK_SIZE, 0, &left_args);
-    right_tid = clone(sort, cstack2 + TSTACK_SIZE, 0, &right_args);
+    left_tid  = clone(sort, cstack1 + TSTACK_SIZE, TFLAGS, &left_args);
+    right_tid = clone(sort, cstack2 + TSTACK_SIZE, TFLAGS, &right_args);
     
     join(left_tid);         // wait for left array to be sorted
     join(right_tid);        // wait for right array to be sorted
@@ -163,19 +163,19 @@ wrong_syscall_test()
     int tid, temp = 0;
     
     // passing invalid arguments which are not in address space
-    tid = clone(not_arguments, 0, 0, BAD_ADDRESS);
+    tid = clone(not_arguments, 0, TFLAGS, BAD_ADDRESS);
     if(tid != -1){
         eprintf("wrong system call clone arguments");
     }
     
     // passing invalid function pointer address 
-    tid = clone(BAD_ADDRESS, 0, 0, 0);
+    tid = clone(BAD_ADDRESS, 0, TFLAGS, 0);
     if(tid != -1){
         eprintf("wrong system call clone function pointer");
     }
        
     // passing invalid stack child address 
-    tid = clone(not_arguments, BAD_ADDRESS, 0, &temp);
+    tid = clone(not_arguments, BAD_ADDRESS, TFLAGS, &temp);
     if(tid != -1){
         eprintf("wrong system call clone stack address");
     }
@@ -202,22 +202,61 @@ wrong_syscall_test()
 
 // ===========================================================================
 
+#define FLAG_STR        "hello"
+
+int fd;
+
 int
-flag_test_func(void *args)
+no_open_file_func(void *args)
 {
-    sleep(100);
-    printf(1, "I was called atleast\n");
+    int bytes_written = write(fd, FLAG_STR, strlen(FLAG_STR));
+    if(bytes_written != -1){
+        eprintf("flags test write in file");
+    }
+    // the stdin and stdout file descripters are not shared 
+    printf(1, "printf should not work\n");
+    exit();
+}
+
+int 
+child_process_func(void *agrs)
+{
+    while(1)
+        ;
     exit();
 }
 
 
 // clone flags arguments are shown as given below
+// TESTCASE: when clone doesn't share the virtual memory 
+//         : when clone doens't share the file descrpter table
 int 
 syscall_flags_test()
 {
-    int tid = clone(flag_test_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
-    join(tid);
+    int tid, pid;
+    fd = open("flags_test.txt", O_RDWR | O_CREATE);
+    if(fd == -1){
+        eprintf("cannot create file");
+    }
     
+    // not sharing the open file descripters in clone process 
+    tid = clone(no_open_file_func, 0, CLONE_VM | CLONE_FS | CLONE_THREAD, 0);
+    join(tid);
+    close(fd);
+    
+    // not sharing the virtual address space 
+    pid = clone(child_process_func, 0, CLONE_FS | CLONE_FILES, 0);
+    if(join(pid) != -1){
+        eprintf("syscall clone created thread instead of process");
+    }
+    // kill the child process 
+    kill(pid);
+    // wait for its completion
+    if(pid != wait()) {
+        eprintf("clone didn't created a process");
+    }
+    
+    sprintf("syscall flag test");
     // success
     return 0;
 }
@@ -240,7 +279,7 @@ nest_func2(void *args)
     int w = 3;
     void *cstack = malloc(TSTACK_SIZE);
     
-    int nest_func3_tid = clone(nest_func3, cstack + TSTACK_SIZE, 0, 0);
+    int nest_func3_tid = clone(nest_func3, cstack + TSTACK_SIZE, TFLAGS, 0);
     sleep(2);
     join(nest_func3_tid);
     free(cstack);
@@ -255,7 +294,7 @@ nest_func1(void *args)
     int w = 2; 
     void *cstack = malloc(TSTACK_SIZE);
     
-    int nest_func2_tid = clone(nest_func2, cstack + TSTACK_SIZE, 0, 0);
+    int nest_func2_tid = clone(nest_func2, cstack + TSTACK_SIZE, TFLAGS, 0);
     sleep(1);
     join(nest_func2_tid);
     free(cstack);
@@ -276,7 +315,7 @@ nested_clone_join_test()
     
     global_var = 0;
 
-    int nest_func1_tid = clone(nest_func1, cstack + TSTACK_SIZE, 0, 0);
+    int nest_func1_tid = clone(nest_func1, cstack + TSTACK_SIZE, TFLAGS, 0);
     join(nest_func1_tid);
     free(cstack);
 
@@ -327,7 +366,7 @@ wait_join_test()
         // child process creates few threads
         for(int i = 0; i < MAX_CHILD_THREADS; i++) {
             child_stacks[i] = malloc(TSTACK_SIZE);
-            tids[i] = clone(wait_join_func, child_stacks[i] + TSTACK_SIZE, 0, 0);
+            tids[i] = clone(wait_join_func, child_stacks[i] + TSTACK_SIZE, TFLAGS, 0);
         } 
         // child process waits for all threads to be joined 
         for(int i = 0; i < MAX_CHILD_THREADS; i++) {
@@ -382,7 +421,7 @@ kernel_clone_stack_alloc()
     
     // create threads and execution begins concurrently 
     for(int i = 0; i < MAX_THREAD_POOL; i++) {
-        thread_pool[i] = clone(incr_global, 0, 0, 0);
+        thread_pool[i] = clone(incr_global, 0, TFLAGS, 0);
     }
     // join all the threads i.e. wait for its execution
     for(int i = 0; i < MAX_THREAD_POOL; i++) {
@@ -440,8 +479,8 @@ peer_relationship_test()
         eprintf("error cannot open file");
     }
     
-    __peer_id1__ = clone(peer_fun1, 0, 0, 0);
-    __peer_id2__ = clone(peer_fun2, 0, 0, 0);
+    __peer_id1__ = clone(peer_fun1, 0, TFLAGS, 0);
+    __peer_id2__ = clone(peer_fun2, 0, TFLAGS, 0);
     
     // just waiting for peer 1 to complete 
     join(__peer_id1__);
@@ -493,8 +532,8 @@ clone_without_join_test()
     // child create threads and doesn't wait
     if(pid == 0) {
         // creating threads 
-        clone(clone_without_join_func, 0, 0, 0);
-        clone(clone_without_join_func, 0, 0, 0);
+        clone(clone_without_join_func, 0, TFLAGS, 0);
+        clone(clone_without_join_func, 0, TFLAGS, 0);
         // calling exit not waiting for the threads
         exit();
     } 
@@ -546,8 +585,8 @@ exec_test()
     if(pid == 0) {
         
         // create two threads one doesn't do exec and one does exec 
-        not_exec_tid = clone(not_exec_func, 0, 0, 0);
-        exec_tid      = clone(exec_func, 0, 0, 0);
+        not_exec_tid  = clone(not_exec_func, 0, TFLAGS, 0);
+        exec_tid      = clone(exec_func, 0, TFLAGS, 0);
         
         // joining the exec thread
         join(not_exec_tid);
@@ -604,8 +643,8 @@ two_exec_test()
     if(pid == 0) {
 
         // create two threads for making exec system call
-        exec_one_tid = clone(exec_one, 0, 0, 0);
-        exec_two_tid = clone(exec_two, 0, 0, 0);
+        exec_one_tid = clone(exec_one, 0, TFLAGS, 0);
+        exec_two_tid = clone(exec_two, 0, TFLAGS, 0);
         
         // wait for the threads to exec
         join(exec_one_tid);
@@ -707,8 +746,8 @@ int
 fork_test() 
 {
     // creates thread one for executing fork and one for increamenting global variable
-    not_fork_func_id = clone(not_fork_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
-    fork_func_id = clone(fork_func, 0, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, 0);
+    not_fork_func_id = clone(not_fork_func, 0, TFLAGS, 0);
+    fork_func_id = clone(fork_func, 0, TFLAGS, 0);
     
     // join thread 
     join(fork_func_id);
@@ -744,7 +783,7 @@ kill_test()
     int new_secret = NEW_SECRET, tid;
     
     // create thread that modifies global variable 
-    tid = clone(change_secret, 0, 0, &new_secret); 
+    tid = clone(change_secret, 0, TFLAGS, &new_secret); 
 
     // kill the thread 
     tkill(tid);
@@ -800,8 +839,8 @@ int
 event_wait_test() 
 {
     global_var = 0;
-    __event_wait_tid__  = clone(event_wait_func, 0, 0, 0);
-    __event_tid__       = clone(event_func, 0, 0, 0);
+    __event_wait_tid__  = clone(event_wait_func, 0, TFLAGS, 0);
+    __event_tid__       = clone(event_func, 0, TFLAGS, 0);
     
     join(__event_tid__);
     join(__event_wait_tid__);
@@ -832,7 +871,7 @@ infinite_recursion(void *agrs)
 int
 stack_smash_test() 
 {
-    int tid = clone(infinite_recursion, 0, 0, 0);
+    int tid = clone(infinite_recursion, 0, TFLAGS, 0);
     join(tid);
     sprintf("stack smash test");
     // succcess
@@ -853,7 +892,7 @@ stack_smash_test()
 int 
 kthread_test_func()
 {
-    sleep(10);
+    sleep(100);
     kthread_exit();
 }
 
@@ -864,6 +903,8 @@ kthread_lib_max_thread_test()
 {
     kthread_t kth_pool[MAX_THREAD_TEST];
     int thread_count = 0;
+
+    printf(1, "STRESS TEST 1 : \n");
 
     // creating the threads using kthread library
     for(int i = 0; i < TOO_MANY_THREADS; i++){
@@ -890,7 +931,7 @@ kthread_lib_max_thread_test()
 // ===========================================================================
 
 #define N                   (6)
-#define M                   (10)
+#define M                   (2000000)
 #define P                   (10)
 
 #define MAGIC_MULTIPLE      (10)
@@ -926,7 +967,21 @@ get_matrix(int n, int m) {
             eprintf("malloc failed");
         }
     }
+    // initialize all the elements in matrix to 1
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < m; j++) {
+            mat[i][j] = 1;
+        }
+    }
     return mat;
+}
+
+void 
+free_matrix(int **arr, int n, int m) {
+    for(int i = 0; i < n; i++) {
+        free(arr[i]);
+    }
+    free(arr);
 }
 
 int
@@ -959,29 +1014,7 @@ kthread_lib_multithreading_test()
     matrixargs args[N * P], temp; 
     kthread_t kthread_pool[N * P];
 
-    // initializing matrix a
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < M; j++){
-            arr[i][j] = i * M + j;
-        }
-    }
-    // initializing matrix b as identity matrix * MAGIC_MULTIPLE
-    for(int i = 0; i < M; i++){
-        for(int j = 0; j < P; j++){
-            if(i == j){
-                brr[i][j] = MAGIC_MULTIPLE;
-            } else{
-                brr[i][j] = 0;
-            }
-        }
-    }
-    
-    // initialization of matrix c
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < P; j++){
-            crr[i][j] = MAGIC_MULTIPLE;
-        }
-    }
+    printf(1, "STRESS TEST 2 : \n");
 
     // matrices 
     temp.a = arr;
@@ -1012,11 +1045,16 @@ kthread_lib_multithreading_test()
     // verifying if the matrix multiplication is correct 
     for(int i = 0; i < N; i++){
         for(int j = 0; j < P; j++){
-            if(crr[i][j] != arr[i][j] * MAGIC_MULTIPLE){
+            if(crr[i][j] != M){
                 eprintf("multithreading test"); 
             }
         }
     }
+    
+    free_matrix(arr, N, M);
+    free_matrix(brr, M, P);
+    free_matrix(crr, N, P);
+
     sprintf("multithreading test");
     // success
     return 0;
@@ -1028,6 +1066,8 @@ kthread_lib_multithreading_test()
 char *thread_str1 = "abcefg\n";
 char *thread_str2 = "xyzlmn\n";
 
+#define THREAD_STR_LEN      (7)
+
 int tfd;
 semaphore sem;
 
@@ -1035,7 +1075,7 @@ int
 filewrite_func1(void *args)
 {
     semaphore_wait(&sem);    
-    for(int i = 0; i < strlen(thread_str1); i++) {
+    for(int i = 0; i < THREAD_STR_LEN; i++) {
         write(tfd, &thread_str1[i], 1);
         sleep(10);
     }
@@ -1047,7 +1087,7 @@ int
 filewrite_func2(void *agrs)
 {
     semaphore_wait(&sem);    
-    for(int i = 0; i < strlen(thread_str2); i++) {
+    for(int i = 0; i < THREAD_STR_LEN; i++) {
         write(tfd, &thread_str2[i], 1);
         sleep(10);
     }
@@ -1084,16 +1124,16 @@ kthread_semaphore_test()
     tfd = open("sem.txt", O_RDONLY); 
     
     // first str1 should be written 
-    read(tfd, str, strlen(thread_str1));
-    str[strlen(thread_str1)] = '\0';
-    if(strcmp(str, thread_str1) != 0){
+    read(tfd, str, THREAD_STR_LEN);
+    str[THREAD_STR_LEN] = '\0';
+    if(strcmp(str, thread_str1) != 0 && strcmp(str, thread_str2) != 0){
         eprintf("semaphore test");
     }
 
     // second str2 should be written 
-    read(tfd, str, strlen(thread_str2));
-    str[strlen(thread_str2)] = '\0';
-    if(strcmp(str, thread_str2) != 0){
+    read(tfd, str, THREAD_STR_LEN);
+    str[THREAD_STR_LEN] = '\0';
+    if(strcmp(str, thread_str2) != 0 && strcmp(str, thread_str1) != 0){
         eprintf("semaphore test");
     }
     
@@ -1126,8 +1166,8 @@ update_func1(void *args)
 {
     acquire_splock(&s);
     for(int i = 0; i < MAX_SIZE / 2; i++) {
-        sleep(10);
         race_arr[race_index] = VAL1; 
+        sleep(10);
         race_index++;
     }
     release_splock(&s);
@@ -1140,8 +1180,8 @@ update_func2(void *args)
 {
     acquire_splock(&s);
     for(int i = 0; i < MAX_SIZE / 2; i++) {
-        sleep(10);
         race_arr[race_index] = VAL2; 
+        sleep(10);
         race_index++;
     }
     release_splock(&s);
@@ -1153,25 +1193,28 @@ update_func2(void *args)
 int 
 uspinlock_test()
 {
-    int tid1, tid2;
+    kthread_t th1, th2;
     init_splock(&s);
-
-    tid1 = clone(update_func1, 0, 0, 0);
-    tid2 = clone(update_func2, 0, 0, 0);
     
-    join(tid1);
-    join(tid2);
+    kthread_create(&th1, update_func1, 0);
+    kthread_create(&th2, update_func2, 0);
     
-    // first half of array must be eqaul to value 1
-    // later half of array must be equal to value 2
-    for(int i = 0; i < MAX_SIZE; i++){
-        if(i < MAX_SIZE / 2 && race_arr[i] != VAL1){
-            eprintf("spinlock test");
-        } 
-        if(i >= MAX_SIZE / 2 && race_arr[i] != VAL2){
+    kthread_join(&th1);
+    kthread_join(&th2);
+    
+    // first half of the array must have same value either 1 or 2
+    // similarly for the second half of the array values.
+    for(int i = 0; i < MAX_SIZE / 2; i++){
+        if(race_arr[0] != race_arr[i]){
             eprintf("spinlock test");
         }
     }
+    for(int i = MAX_SIZE / 2; i < MAX_SIZE; i++) {
+        if(race_arr[MAX_SIZE / 2] != race_arr[i]) {
+            eprintf("spinlock test");
+        }
+    }
+    
     sprintf("spinlock test");
     exit();
 }
@@ -1185,31 +1228,31 @@ main(int argc, char *argv[])
     
     // SYSTEM CALL TESTS 
     
-    //clone_join_test();                  // simple clone and join system call
-    //wrong_syscall_test();               // wrong ways to call clone and join
-    //syscall_flags_test();               // flags passed to system call
-    //nested_clone_join_test();           // nested clone and join system call
-    //kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    //peer_relationship_test();           // threads sharing peer to peer relationship
-    //wait_join_test();                   // join and wait both work correctly 
-    //clone_without_join_test();          // clone thread without join 
-    //exec_test();                        // exec test for threads
-    //two_exec_test();                    // exec concurrently done by seperate threads
+    clone_join_test();                  // simple clone and join system call
+    wrong_syscall_test();               // wrong ways to call clone and join
+    syscall_flags_test();               // flags passed to system call
+    nested_clone_join_test();           // nested clone and join system call
+    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+    peer_relationship_test();           // threads sharing peer to peer relationship
+    wait_join_test();                   // join and wait both work correctly 
+    clone_without_join_test();          // clone thread without join 
+    exec_test();                        // exec test for threads
+    two_exec_test();                    // exec concurrently done by seperate threads
     fork_test();                        // thread calls fork system call
-    //kill_test();                        // kills thread 
-    //event_wait_test();                  // suspend and resume test for threads 
-    //stack_smash_test();                 // stack smash detection for threads
+    kill_test();                        // kills thread 
+    event_wait_test();                  // suspend and resume test for threads 
+    stack_smash_test();                 // stack smash detection for threads
 
     // KTHREAD LIBRARY TESTS
     // stress tests
      
-    //kthread_lib_max_thread_test();      // max threads created by kthread lib
-    //kthread_lib_multithreading_test();  // multithreaded program written for test
-    //kthread_semaphore_test();           // synchorization using semaphore
+    kthread_lib_max_thread_test();      // max threads created by kthread lib
+    kthread_lib_multithreading_test();  // multithreaded program written for test
+    kthread_semaphore_test();           // synchorization using semaphore
 
     // SYNCHRONIZATION ISSUES AND SOLUTIONS
     
-    //uspinlock_test();                   // userland spinlock code test
+    uspinlock_test();                   // userland spinlock code test
 
     exit();
 }

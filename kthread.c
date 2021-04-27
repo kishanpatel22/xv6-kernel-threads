@@ -4,6 +4,19 @@
 #include "fcntl.h"
 #include "cflags.h"
 
+// kthreads user library implementation 
+#define KERNEL_STACK_ALLOC      (1)
+#define SBRK_STACK_ALLOC        (2)
+
+// change the macro to change the implementation of the library
+#define LIB_IMPLEMENTATION      (KERNEL_STACK_ALLOC)
+
+#define KTHREAD_STACK_SIZE      (4096)
+
+#define BASE_ADDRESS(stack)     ((stack) + KTHREAD_STACK_SIZE)
+#define START_ADDRESS(stack)    ((stack) - KTHREAD_STACK_SIZE)
+
+
 // module contains userland threading library which creates
 // threads using the underlying system calls like clone and join
 
@@ -20,6 +33,9 @@ create_thread_stack(void **stack)
     if(*stack == 0) {
         return -1;
     }
+
+    // the stack address is the base address 
+    *stack = BASE_ADDRESS(*stack);
     
     // kernel manages the thread stack allocation
     #else
@@ -38,7 +54,7 @@ destory_thread_stack(void **stack)
     #if LIB_IMPLEMENTATION == SBRK_STACK_ALLOC
     
     // deallocate memmory of thread stack
-    free(*stack);
+    free(START_ADDRESS(*stack));
     *stack = 0;
     
     #endif 
@@ -60,7 +76,7 @@ kthread_create(kthread_t *kthread, int func(void *args), void *args)
     }
     
     // cannot create thread 
-    if((kthread->tid = clone(func, kthread->tstack, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD, args)) == -1) {
+    if((kthread->tid = clone(func, kthread->tstack, TFLAGS, args)) == -1) {
         destory_thread_stack(&(kthread->tstack));
         kthread->state = DEAD;
         return -1;

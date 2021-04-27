@@ -322,7 +322,7 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
                 np->ofile[i] = filedup(curproc->ofile[i]);
             }
         }
-    }
+    } 
     
     if((flags & CLONE_FS)) {
         np->cwd = idup(curproc->cwd);
@@ -337,12 +337,14 @@ clone(int (*func)(void *args), void *child_stack, int flags, void *args)
         
         // pid of the clone child process is same as the parent process 
         np->pid = curproc->pid;
-
+        
+        // return id is the thread id 
         retid = np->tid;
     } else {
         // the child process is thread leader in different thread group
         np->tid = -1;
         
+        // return id is the process id
         retid = np->pid;
     }
     
