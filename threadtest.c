@@ -784,12 +784,12 @@ kill_test()
     
     // create thread that modifies global variable 
     tid = clone(change_secret, 0, TFLAGS, &new_secret); 
-
+    
     // kill the thread 
     tkill(tid);
     
-    // unable to join killed thread
-    if(join(tid) == -1 && global_var != NEW_SECRET){
+    // should be able join killed thread
+    if(join(tid) == tid && global_var != NEW_SECRET){
         sprintf("thread kill test"); 
     } else{
         eprintf("thread kill test");

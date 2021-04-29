@@ -181,9 +181,11 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
+
   curproc->sz = sz;
   // update the thread leader size 
   THREAD_LEADER(curproc)->sz = sz;
+
   switchuvm(curproc);
   return 0;
 }
@@ -480,7 +482,7 @@ join(int tid)
     join_thread_exits = 0;
     // check if the thread joining the tid both belong to same thread group
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader && !p->killed){
+        if(p->tid == tid && p->parent == tleader) {
             join_thread_exits = 1; 
             break;
         }
@@ -709,8 +711,8 @@ kill(int pid)
   return -1;
 }
 
-// kills paritcular thread with tid present in thread group 
-// threads cannot kill main thread since it is process.
+// kills thread with given thread id
+// system call doesn't block returns immediately
 int
 tkill(int tid) 
 {
@@ -722,6 +724,7 @@ tkill(int tid)
     return -1;
     
   kill_thread_exits = 0;
+
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     // threads share same pid
@@ -735,30 +738,12 @@ tkill(int tid)
       break;
     }  
   }
-  if(!kill_thread_exits || curproc->killed){
-    release(&ptable.lock);
+  release(&ptable.lock);
+  
+  if(!kill_thread_exits){
     return -1;
   }
-  for(;;){
-    if(p->state == ZOMBIE){
-      kfree(p->kstack);
-      p->kstack = 0;
-      if(p->tstackalloc){
-        freecloneuvm(p->pgdir, p->tstack);
-      }
-      p->pid = 0;
-      p->tid = 0;
-      p->tstack = 0;
-      p->parent = 0;
-      p->name[0] = 0;
-      p->killed = 0;
-      p->state = UNUSED;
-      release(&ptable.lock);
-      return 0;
-    } 
-    sleep(THREAD_LEADER(curproc), &ptable.lock);
-  }
-  return 0; 
+  return 0;
 }
 
 // process exit must call tgkill, before becoming ZOMBIE
