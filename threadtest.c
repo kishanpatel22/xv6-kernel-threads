@@ -26,55 +26,55 @@ int global_var;     // one global variable for all functions to test
 // ===========================================================================
 
 typedef struct sortargs {
-    int *arr, start, end;
+  int *arr, start, end;
 } sortargs;
 
 // merge routine needed for merging two sorted arrays
 void 
 merge(int *arr, int start, int mid, int end) 
 {
-    int n1 = mid - start + 1;
-    int n2 = end - mid;
-    int left[n1 + 1], right[n2 + 1];
-    for(int i = 0; i < n1; i++) {
-        left[i] = arr[start + i];
+  int n1 = mid - start + 1;
+  int n2 = end - mid;
+  int left[n1 + 1], right[n2 + 1];
+  for(int i = 0; i < n1; i++) {
+    left[i] = arr[start + i];
+  }
+  for(int i = 0; i < n2; i++) {
+    right[i] = arr[mid + i + 1];
+  }
+  left[n1] = right[n2] = (int)10e9;
+  int i = 0, j = 0;
+  for(int k = start; k <= end; k++) {
+    if(left[i] <= right[j]) {
+      arr[k] = left[i];
+      i++;
+    } else {
+      arr[k] = right[j];
+      j++;
     }
-    for(int i = 0; i < n2; i++) {
-        right[i] = arr[mid + i + 1];
-    }
-    left[n1] = right[n2] = (int)10e9;
-    int i = 0, j = 0;
-    for(int k = start; k <= end; k++) {
-        if(left[i] <= right[j]) {
-            arr[k] = left[i];
-            i++;
-        } else {
-            arr[k] = right[j];
-            j++;
-        }
-    }
-    return;
+  }
+  return;
 }
 
 // merge sort for sorting two arrays
 void 
 mergesort(int *arr, int start, int end) 
 {
-    if(start < end) {
-        int mid = start + (end - start) / 2;
-        mergesort(arr, start, mid);
-        mergesort(arr, mid + 1, end);
-        merge(arr, start, mid, end);
-    }
+  if(start < end) {
+    int mid = start + (end - start) / 2;
+    mergesort(arr, start, mid);
+    mergesort(arr, mid + 1, end);
+    merge(arr, start, mid, end);
+  }
 }
 
 // thread routine calls merge sort for sorting
 int 
 sort(void *args) 
 {
-    sortargs *ptr = (sortargs *)args; 
-    mergesort(ptr->arr, ptr->start, ptr->end);
-    exit();
+  sortargs *ptr = (sortargs *)args; 
+  mergesort(ptr->arr, ptr->start, ptr->end);
+  exit();
 }
 
 
@@ -86,59 +86,58 @@ sort(void *args)
 int 
 clone_join_test() 
 {
-    
-    void *cstack1, *cstack2;
-    int *arr;
-    int n = 100, left_tid, right_tid;
-    sortargs left_args, right_args;
+  void *cstack1, *cstack2;
+  int *arr;
+  int n = 100, left_tid, right_tid;
+  sortargs left_args, right_args;
 
-    arr = (int *)malloc(sizeof(int) * n);
-    if(!arr) {
-        eprintf("malloc failed");
+  arr = (int *)malloc(sizeof(int) * n);
+  if(!arr) {
+    eprintf("malloc failed");
+  }
+  // creating a reverse sorted array
+  for(int i = 0; i < n; i++) {
+    arr[i] = n - i;             
+  }
+
+  // arguments for thread execution 
+  left_args.arr = right_args.arr = arr;
+  left_args.start = 0;
+  left_args.end = n / 2;
+  right_args.start = (n / 2) + 1;
+  right_args.end = n - 1;
+  
+  // stacks allocated for execution
+  cstack1 = malloc(TSTACK_SIZE);
+  cstack2 = malloc(TSTACK_SIZE);
+  if(!cstack1 || !cstack2) {
+    eprintf("malloc failed"); 
+  }
+
+  // creating threads for sorting concurrently 
+  left_tid  = clone(sort, cstack1 + TSTACK_SIZE, TFLAGS, &left_args);
+  right_tid = clone(sort, cstack2 + TSTACK_SIZE, TFLAGS, &right_args);
+  
+  join(left_tid);         // wait for left array to be sorted
+  join(right_tid);        // wait for right array to be sorted
+  
+  // merge the sorted arrays 
+  merge(arr, 0, n / 2, n - 1);
+  
+  // verifying if the array is sorted 
+  for(int i = 0; i < n; i++) {
+    if(arr[i] != i + 1) {
+      eprintf("clone join test");
     }
-    // creating a reverse sorted array
-    for(int i = 0; i < n; i++) {
-        arr[i] = n - i;             
-    }
+  }
+  sprintf("clone join test");
 
-    // arguments for thread execution 
-    left_args.arr = right_args.arr = arr;
-    left_args.start = 0;
-    left_args.end = n / 2;
-    right_args.start = (n / 2) + 1;
-    right_args.end = n - 1;
-    
-    // stacks allocated for execution
-    cstack1 = malloc(TSTACK_SIZE);
-    cstack2 = malloc(TSTACK_SIZE);
-    if(!cstack1 || !cstack2) {
-        eprintf("malloc failed"); 
-    }
+  free(arr);
+  free(cstack1);
+  free(cstack2);
 
-    // creating threads for sorting concurrently 
-    left_tid  = clone(sort, cstack1 + TSTACK_SIZE, TFLAGS, &left_args);
-    right_tid = clone(sort, cstack2 + TSTACK_SIZE, TFLAGS, &right_args);
-    
-    join(left_tid);         // wait for left array to be sorted
-    join(right_tid);        // wait for right array to be sorted
-    
-    // merge the sorted arrays 
-    merge(arr, 0, n / 2, n - 1);
-    
-    // verifying if the array is sorted 
-    for(int i = 0; i < n; i++) {
-        if(arr[i] != i + 1) {
-            eprintf("clone join test");
-        }
-    }
-    sprintf("clone join test");
-
-    free(arr);
-    free(cstack1);
-    free(cstack2);
-
-    // success
-    return 0;
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -151,53 +150,53 @@ clone_join_test()
 int 
 not_arguments(void *args)
 {
-    int *ptr = (int *)args;
-    *ptr = *ptr + 10;
-    exit();
+  int *ptr = (int *)args;
+  *ptr = *ptr + 10;
+  exit();
 }
 
 // wrong ways to call clone and join system calls test 
 int 
 wrong_syscall_test()
 {   
-    int tid, temp = 0;
-    
-    // passing invalid arguments which are not in address space
-    tid = clone(not_arguments, 0, TFLAGS, BAD_ADDRESS);
-    if(tid != -1){
-        eprintf("wrong system call clone arguments");
-    }
-    
-    // passing invalid function pointer address 
-    tid = clone(BAD_ADDRESS, 0, TFLAGS, 0);
-    if(tid != -1){
-        eprintf("wrong system call clone function pointer");
-    }
-       
-    // passing invalid stack child address 
-    tid = clone(not_arguments, BAD_ADDRESS, TFLAGS, &temp);
-    if(tid != -1){
-        eprintf("wrong system call clone stack address");
-    }
+  int tid, temp = 0;
+  
+  // passing invalid arguments which are not in address space
+  tid = clone(not_arguments, 0, TFLAGS, BAD_ADDRESS);
+  if(tid != -1){
+    eprintf("wrong system call clone arguments");
+  }
+  
+  // passing invalid function pointer address 
+  tid = clone(BAD_ADDRESS, 0, TFLAGS, 0);
+  if(tid != -1){
+    eprintf("wrong system call clone function pointer");
+  }
+     
+  // passing invalid stack child address 
+  tid = clone(not_arguments, BAD_ADDRESS, TFLAGS, &temp);
+  if(tid != -1){
+    eprintf("wrong system call clone stack address");
+  }
 
-    // invalid flag passing 
-    
+  // invalid flag passing 
+  
 
-    // join system call for any random thread id
-    tid = 1234;
-    if(join(tid) != -1){
-        eprintf("wrong system call join random thread id");
-    }
+  // join system call for any random thread id
+  tid = 1234;
+  if(join(tid) != -1){
+    eprintf("wrong system call join random thread id");
+  }
 
-    // join system call for group leader (thread group leader has tid = -1)
-    tid = -1;
-    if(join(tid) != -1){
-        eprintf("wrong system call join random thread id");
-    }
-    
-    sprintf("wrong system call clone and join");
-    // success
-    return 0;
+  // join system call for group leader (thread group leader has tid = -1)
+  tid = -1;
+  if(join(tid) != -1){
+    eprintf("wrong system call join random thread id");
+  }
+  
+  sprintf("wrong system call clone and join");
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -209,21 +208,21 @@ int fd;
 int
 no_open_file_func(void *args)
 {
-    int bytes_written = write(fd, FLAG_STR, strlen(FLAG_STR));
-    if(bytes_written != -1){
-        eprintf("flags test write in file");
-    }
-    // the stdin and stdout file descripters are not shared 
-    printf(1, "printf should not work\n");
-    exit();
+  int bytes_written = write(fd, FLAG_STR, strlen(FLAG_STR));
+  if(bytes_written != -1){
+    eprintf("flags test write in file");
+  }
+  // the stdin and stdout file descripters are not shared 
+  printf(1, "printf should not work\n");
+  exit();
 }
 
 int 
 child_process_func(void *agrs)
 {
-    while(1)
-        ;
-    exit();
+  while(1)
+      ;
+  exit();
 }
 
 
@@ -233,32 +232,32 @@ child_process_func(void *agrs)
 int 
 syscall_flags_test()
 {
-    int tid, pid;
-    fd = open("flags_test.txt", O_RDWR | O_CREATE);
-    if(fd == -1){
-        eprintf("cannot create file");
-    }
-    
-    // not sharing the open file descripters in clone process 
-    tid = clone(no_open_file_func, 0, CLONE_VM | CLONE_FS | CLONE_THREAD, 0);
-    join(tid);
-    close(fd);
-    
-    // not sharing the virtual address space 
-    pid = clone(child_process_func, 0, CLONE_FS | CLONE_FILES, 0);
-    if(join(pid) != -1){
-        eprintf("syscall clone created thread instead of process");
-    }
-    // kill the child process 
-    kill(pid);
-    // wait for its completion
-    if(pid != wait()) {
-        eprintf("clone didn't created a process");
-    }
-    
-    sprintf("syscall flag test");
-    // success
-    return 0;
+  int tid, pid;
+  fd = open("flags_test.txt", O_RDWR | O_CREATE);
+  if(fd == -1){
+    eprintf("cannot create file");
+  }
+  
+  // not sharing the open file descripters in clone process 
+  tid = clone(no_open_file_func, 0, CLONE_VM | CLONE_FS | CLONE_THREAD, 0);
+  join(tid);
+  close(fd);
+  
+  // not sharing the virtual address space 
+  pid = clone(child_process_func, 0, CLONE_FS | CLONE_FILES, 0);
+  if(join(pid) != -1){
+    eprintf("syscall clone created thread instead of process");
+  }
+  // kill the child process 
+  kill(pid);
+  // wait for its completion
+  if(pid != wait()) {
+    eprintf("clone didn't created a process");
+  }
+  
+  sprintf("syscall flag test");
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -266,41 +265,41 @@ syscall_flags_test()
 int 
 nest_func3(void *args) 
 {
-    int w = 4;
-    sleep(3);
+  int w = 4;
+  sleep(3);
 
-    global_var = global_var * 10 + w;
-    exit();
+  global_var = global_var * 10 + w;
+  exit();
 }
 
 int
 nest_func2(void *args) 
 {
-    int w = 3;
-    void *cstack = malloc(TSTACK_SIZE);
-    
-    int nest_func3_tid = clone(nest_func3, cstack + TSTACK_SIZE, TFLAGS, 0);
-    sleep(2);
-    join(nest_func3_tid);
-    free(cstack);
-    
-    global_var = global_var * 10 + w;
-    exit();
+  int w = 3;
+  void *cstack = malloc(TSTACK_SIZE);
+  
+  int nest_func3_tid = clone(nest_func3, cstack + TSTACK_SIZE, TFLAGS, 0);
+  sleep(2);
+  join(nest_func3_tid);
+  free(cstack);
+  
+  global_var = global_var * 10 + w;
+  exit();
 }
 
 int
 nest_func1(void *args) 
 {
-    int w = 2; 
-    void *cstack = malloc(TSTACK_SIZE);
-    
-    int nest_func2_tid = clone(nest_func2, cstack + TSTACK_SIZE, TFLAGS, 0);
-    sleep(1);
-    join(nest_func2_tid);
-    free(cstack);
-    
-    global_var = global_var * 10 + w;
-    exit();
+  int w = 2; 
+  void *cstack = malloc(TSTACK_SIZE);
+  
+  int nest_func2_tid = clone(nest_func2, cstack + TSTACK_SIZE, TFLAGS, 0);
+  sleep(1);
+  join(nest_func2_tid);
+  free(cstack);
+  
+  global_var = global_var * 10 + w;
+  exit();
 }
 
 // nested clone join test for clone system call created threads again 
@@ -310,24 +309,24 @@ nest_func1(void *args)
 int 
 nested_clone_join_test() 
 {
-    int w = 1; 
-    void *cstack = malloc(TSTACK_SIZE);
-    
-    global_var = 0;
+  int w = 1; 
+  void *cstack = malloc(TSTACK_SIZE);
+  
+  global_var = 0;
 
-    int nest_func1_tid = clone(nest_func1, cstack + TSTACK_SIZE, TFLAGS, 0);
-    join(nest_func1_tid);
-    free(cstack);
+  int nest_func1_tid = clone(nest_func1, cstack + TSTACK_SIZE, TFLAGS, 0);
+  join(nest_func1_tid);
+  free(cstack);
 
-    global_var = global_var * 10 + w;
+  global_var = global_var * 10 + w;
 
-    if(global_var == 4321) {
-        sprintf("nested clone join");
-    } else {
-        eprintf("nested clone join");
-    }
-    // success 
-    return 0;
+  if(global_var == 4321) {
+    sprintf("nested clone join");
+  } else {
+    eprintf("nested clone join");
+  }
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -342,9 +341,9 @@ int __key__;
 int 
 wait_join_func(void *agrs) 
 {
-    sleep(5); 
-    __key__ += SECRET_KEY;
-    exit();
+  sleep(5); 
+  __key__ += SECRET_KEY;
+  exit();
 } 
 
 // join waits for a paritcular thread to finish, wait must wait for "any" 
@@ -356,40 +355,40 @@ int
 wait_join_test() 
 {
     
-    int pid, wpid;
-    int tids[MAX_CHILD_THREADS];
-    void *child_stacks[MAX_CHILD_THREADS];
+  int pid, wpid;
+  int tids[MAX_CHILD_THREADS];
+  void *child_stacks[MAX_CHILD_THREADS];
 
-    // create a child process 
-    pid = fork();
-    if(pid == 0){
-        // child process creates few threads
-        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
-            child_stacks[i] = malloc(TSTACK_SIZE);
-            tids[i] = clone(wait_join_func, child_stacks[i] + TSTACK_SIZE, TFLAGS, 0);
-        } 
-        // child process waits for all threads to be joined 
-        for(int i = 0; i < MAX_CHILD_THREADS; i++) {
-            join(tids[i]);
-            free(child_stacks[i]);
-        }
-        // were the threads really working 
-        if(!CHECK(__key__)) {
-            eprintf("wait join test\n"); 
-        }
-        exit();
+  // create a child process 
+  pid = fork();
+  if(pid == 0){
+    // child process creates few threads
+    for(int i = 0; i < MAX_CHILD_THREADS; i++) {
+      child_stacks[i] = malloc(TSTACK_SIZE);
+      tids[i] = clone(wait_join_func, child_stacks[i] + TSTACK_SIZE, TFLAGS, 0);
     } 
-    
-    // parent process should for child process + child threads to finish
-    wpid = wait();
-    if(wpid == pid) {
-        sprintf("wait join test");
-    } else {
-        eprintf("wait join test");
+    // child process waits for all threads to be joined 
+    for(int i = 0; i < MAX_CHILD_THREADS; i++) {
+      join(tids[i]);
+      free(child_stacks[i]);
     }
+    // were the threads really working 
+    if(!CHECK(__key__)) {
+      eprintf("wait join test\n"); 
+    }
+    exit();
+  } 
+  
+  // parent process should for child process + child threads to finish
+  wpid = wait();
+  if(wpid == pid) {
+    sprintf("wait join test");
+  } else {
+    eprintf("wait join test");
+  }
 
-    // sucess 
-    return 0;
+  // sucess 
+  return 0;
 }
 
 // ===========================================================================
@@ -400,10 +399,10 @@ wait_join_test()
 int
 incr_global(void *args) 
 {
-    for(int i = 0; i < MAX_ITERATIONS; i++) {
-        global_var++;
-    }
-    exit();
+  for(int i = 0; i < MAX_ITERATIONS; i++) {
+    global_var++;
+  }
+  exit();
 }
 
 // the clone and join system calls "without passing child stack parameter"
@@ -414,26 +413,26 @@ incr_global(void *args)
 int 
 kernel_clone_stack_alloc() 
 {
-    // thread pool for storing thread ids
-    int thread_pool[MAX_THREAD_POOL];
-    // initializing global variables 
-    global_var = 0;
-    
-    // create threads and execution begins concurrently 
-    for(int i = 0; i < MAX_THREAD_POOL; i++) {
-        thread_pool[i] = clone(incr_global, 0, TFLAGS, 0);
-    }
-    // join all the threads i.e. wait for its execution
-    for(int i = 0; i < MAX_THREAD_POOL; i++) {
-        join(thread_pool[i]);
-    }
-    if(global_var == MAX_THREAD_POOL * MAX_ITERATIONS) {
-        sprintf("kernel clone stack allocation");
-    } else {
-        eprintf("kernel clone stack allocation");
-    }
-    // sucess
-    return 0;
+  // thread pool for storing thread ids
+  int thread_pool[MAX_THREAD_POOL];
+  // initializing global variables 
+  global_var = 0;
+  
+  // create threads and execution begins concurrently 
+  for(int i = 0; i < MAX_THREAD_POOL; i++) {
+    thread_pool[i] = clone(incr_global, 0, TFLAGS, 0);
+  }
+  // join all the threads i.e. wait for its execution
+  for(int i = 0; i < MAX_THREAD_POOL; i++) {
+    join(thread_pool[i]);
+  }
+  if(global_var == MAX_THREAD_POOL * MAX_ITERATIONS) {
+    sprintf("kernel clone stack allocation");
+  } else {
+    eprintf("kernel clone stack allocation");
+  }
+  // sucess
+  return 0;
 }
 
 // ===========================================================================
@@ -448,20 +447,22 @@ int __open_fd__, __peer_id1__, __peer_id2__;
 #define PEER1_STR_LEN   (66)
 #define PEER2_STR_LEN   (45)
 
-int peer_fun2(void *agrs) 
+int 
+peer_fun2(void *agrs) 
 {
-    sleep(100);
-    write(__open_fd__, PEER2_STR, PEER2_STR_LEN);
-    exit();
+  sleep(100);
+  write(__open_fd__, PEER2_STR, PEER2_STR_LEN);
+  exit();
 }
 
-int peer_fun1(void *args) 
+int
+peer_fun1(void *args) 
 {
-    sleep(100);
-    // waiting for peer 2 to complete (although peer 1 is not parent)
-    join(__peer_id2__);
-    write(__open_fd__, PEER1_STR, PEER1_STR_LEN);
-    exit();
+  sleep(100);
+  // waiting for peer 2 to complete (although peer 1 is not parent)
+  join(__peer_id2__);
+  write(__open_fd__, PEER1_STR, PEER1_STR_LEN);
+  exit();
 }
 
 // clone unlike fork doesn't enforces any parent child relationship.
@@ -473,42 +474,42 @@ int peer_fun1(void *args)
 int 
 peer_relationship_test() 
 {
-    char buffer[128];
-    __open_fd__ = open(PEER_TEST_FILE, O_RDWR | O_CREATE);
-    if(__open_fd__ == -1) {
-        eprintf("error cannot open file");
-    }
-    
-    __peer_id1__ = clone(peer_fun1, 0, TFLAGS, 0);
-    __peer_id2__ = clone(peer_fun2, 0, TFLAGS, 0);
-    
-    // just waiting for peer 1 to complete 
-    join(__peer_id1__);
-    close(__open_fd__);
-    
-    // verifying the correctedness 
-    __open_fd__ = open(PEER_TEST_FILE, O_RDWR | O_CREATE);
-    if(__open_fd__ == -1) {
-        eprintf("error cannot open file");
-    }
-    
-    read(__open_fd__, buffer, PEER2_STR_LEN); 
-    buffer[PEER2_STR_LEN] = '\0';
-    
-    if(strcmp(buffer, PEER2_STR) != 0) {
-        eprintf("thread peer relationship"); 
-    }
-    
-    read(__open_fd__, buffer, PEER1_STR_LEN); 
-    buffer[PEER1_STR_LEN] = '\0';
-    if(strcmp(buffer, PEER1_STR) != 0) {
-        eprintf("thread peer relationship"); 
-    }
+  char buffer[128];
+  __open_fd__ = open(PEER_TEST_FILE, O_RDWR | O_CREATE);
+  if(__open_fd__ == -1) {
+    eprintf("error cannot open file");
+  }
+  
+  __peer_id1__ = clone(peer_fun1, 0, TFLAGS, 0);
+  __peer_id2__ = clone(peer_fun2, 0, TFLAGS, 0);
+  
+  // just waiting for peer 1 to complete 
+  join(__peer_id1__);
+  close(__open_fd__);
+  
+  // verifying the correctedness 
+  __open_fd__ = open(PEER_TEST_FILE, O_RDWR | O_CREATE);
+  if(__open_fd__ == -1) {
+    eprintf("error cannot open file");
+  }
+  
+  read(__open_fd__, buffer, PEER2_STR_LEN); 
+  buffer[PEER2_STR_LEN] = '\0';
+  
+  if(strcmp(buffer, PEER2_STR) != 0) {
+    eprintf("thread peer relationship"); 
+  }
+  
+  read(__open_fd__, buffer, PEER1_STR_LEN); 
+  buffer[PEER1_STR_LEN] = '\0';
+  if(strcmp(buffer, PEER1_STR) != 0) {
+    eprintf("thread peer relationship"); 
+  }
 
-    sprintf("thread peer relationship");
+  sprintf("thread peer relationship");
 
-    // succuess
-    return 0;
+  // succuess
+  return 0;
 }
 
 // ===========================================================================
@@ -516,8 +517,8 @@ peer_relationship_test()
 int 
 clone_without_join_func(void *agrs) 
 {
-    sleep(10);
-    exit();
+  sleep(10);
+  exit();
 }
 
 // clone system call done without a join system call, i.e. any process or
@@ -527,25 +528,25 @@ clone_without_join_func(void *agrs)
 int 
 clone_without_join_test() 
 {
-    int pid, wpid;
-    pid = fork();
-    // child create threads and doesn't wait
-    if(pid == 0) {
-        // creating threads 
-        clone(clone_without_join_func, 0, TFLAGS, 0);
-        clone(clone_without_join_func, 0, TFLAGS, 0);
-        // calling exit not waiting for the threads
-        exit();
-    } 
-    // parent waits for the child
-    wpid = wait(); 
-    if(wpid == pid) {
-        sprintf("clone without join");
-    } else {
-        eprintf("clone without join"); 
-    }
-    // success
-    return 0;
+  int pid, wpid;
+  pid = fork();
+  // child create threads and doesn't wait
+  if(pid == 0) {
+    // creating threads 
+    clone(clone_without_join_func, 0, TFLAGS, 0);
+    clone(clone_without_join_func, 0, TFLAGS, 0);
+    // calling exit not waiting for the threads
+    exit();
+  } 
+  // parent waits for the child
+  wpid = wait(); 
+  if(wpid == pid) {
+    sprintf("clone without join");
+  } else {
+    eprintf("clone without join"); 
+  }
+  // success
+  return 0;
 }
 
 
@@ -556,19 +557,19 @@ char *exec_argv[] = {"echo", "exec test PASSED", 0};
 int 
 exec_func(void *args) 
 {
-    // does an exec system call
-    exec(exec_argv[0], exec_argv);
-    // exec should ideally not return 
-    eprintf("exec test");
-    exit(); 
+  // does an exec system call
+  exec(exec_argv[0], exec_argv);
+  // exec should ideally not return 
+  eprintf("exec test");
+  exit(); 
 }
 
 int 
 not_exec_func(void *agrs) 
 {
-    // thread simply sleeps
-    sleep(10);
-    exit();
+  // thread simply sleeps
+  sleep(10);
+  exit();
 }
 
 // created cloned process makes an exec, which will kill all the threads
@@ -579,33 +580,33 @@ not_exec_func(void *agrs)
 int
 exec_test() 
 {
-    int pid, exec_tid, not_exec_tid;
-    pid = fork();
-    // child creates two threads and one of thread does exec and other sleeps for 10 sec
-    if(pid == 0) {
-        
-        // create two threads one doesn't do exec and one does exec 
-        not_exec_tid  = clone(not_exec_func, 0, TFLAGS, 0);
-        exec_tid      = clone(exec_func, 0, TFLAGS, 0);
-        
-        // joining the exec thread
-        join(not_exec_tid);
-        join(exec_tid);
-        
-        // join should never returns 
-        eprintf("exec test");
+  int pid, exec_tid, not_exec_tid;
+  pid = fork();
+  // child creates two threads and one of thread does exec and other sleeps for 10 sec
+  if(pid == 0) {
+    
+    // create two threads one doesn't do exec and one does exec 
+    not_exec_tid  = clone(not_exec_func, 0, TFLAGS, 0);
+    exec_tid      = clone(exec_func, 0, TFLAGS, 0);
+    
+    // joining the exec thread
+    join(not_exec_tid);
+    join(exec_tid);
+    
+    // join should never returns 
+    eprintf("exec test");
+  }
+  // parent simply waits for the child
+  else {
+    int cpid = wait();
+    if(cpid == pid) {
+      sprintf("exec test");
+    } else {
+      eprintf("exec test");
     }
-    // parent simply waits for the child
-    else {
-        int cpid = wait();
-        if(cpid == pid) {
-            sprintf("exec test");
-        } else {
-            eprintf("exec test");
-        }
-    }
-    // success 
-    return 0;
+  }
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -616,17 +617,17 @@ char *exec_two_argv[] = {"echo", "two exec test FAILED", 0};
 int 
 exec_one(void *args) 
 {
-    exec(exec_one_argv[0], exec_one_argv);
-    // exec should never return
-    exit();
+  exec(exec_one_argv[0], exec_one_argv);
+  // exec should never return
+  exit();
 }
 
 int 
 exec_two(void *agrs) 
 {
-    exec(exec_two_argv[0], exec_two_argv);
-    // exec should never return
-    exit();
+  exec(exec_two_argv[0], exec_two_argv);
+  // exec should never return
+  exit();
 }
 
 // when more than one threads concurrently tries make exec system call 
@@ -637,34 +638,34 @@ exec_two(void *agrs)
 int 
 two_exec_test() 
 {
-    int pid, exec_one_tid, exec_two_tid, wpid;
-    pid = fork();
-    // child process creates two threads both doing exec concurrently 
-    if(pid == 0) {
+  int pid, exec_one_tid, exec_two_tid, wpid;
+  pid = fork();
+  // child process creates two threads both doing exec concurrently 
+  if(pid == 0) {
 
-        // create two threads for making exec system call
-        exec_one_tid = clone(exec_one, 0, TFLAGS, 0);
-        exec_two_tid = clone(exec_two, 0, TFLAGS, 0);
-        
-        // wait for the threads to exec
-        join(exec_one_tid);
-        join(exec_two_tid);
-
-        // join should ideally not return
-        eprintf("two_exec_test"); 
-        exit();
-    } 
-
-    // parent waits for child process to complete only on exec.
-    wpid = wait();
-    if(wpid == pid) {
-        sprintf("two exec test");
-    } else {
-        eprintf("two exec test");
-    }
+    // create two threads for making exec system call
+    exec_one_tid = clone(exec_one, 0, TFLAGS, 0);
+    exec_two_tid = clone(exec_two, 0, TFLAGS, 0);
     
-    // success
-    return 0;
+    // wait for the threads to exec
+    join(exec_one_tid);
+    join(exec_two_tid);
+
+    // join should ideally not return
+    eprintf("two_exec_test"); 
+    exit();
+  } 
+
+  // parent waits for child process to complete only on exec.
+  wpid = wait();
+  if(wpid == pid) {
+    sprintf("two exec test");
+  } else {
+    eprintf("two exec test");
+  }
+  
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -680,61 +681,61 @@ int fork_func_id, not_fork_func_id;
 int 
 not_fork_func(void *agrs) 
 {
-    sleep(50);
-    exit();
+  sleep(50);
+  exit();
 }
 
 // creates child process and waits for it's execution 
 int 
 fork_func(void *agrs) 
 {
-    int pid, wpid, fd;
-    char buf[FORK_STR_LEN + 1];
+  int pid, wpid, fd;
+  char buf[FORK_STR_LEN + 1];
+  
+  // create identical child process  
+  pid = fork();
+  
+  if(pid == -1){
+    eprintf("fork test cannot make system call fork");
+  }
+
+  // child does write system call to make change in file system.
+  if(pid == 0){
     
-    // create identical child process  
-    pid = fork();
+    fd = open(FORK_TEST_FILE, O_RDWR | O_CREATE);
+    write(fd, FORK_STR, FORK_STR_LEN);
+    close(fd);
     
-    if(pid == -1){
-        eprintf("fork test cannot make system call fork");
+    // child process doesn't have other thread in address space 
+    // join must fail since thread doens't belong to group
+    if(join(not_fork_func_id) != -1){
+      eprintf("fork test failed join should not happend");
     }
 
-    // child does write system call to make change in file system.
-    if(pid == 0){
-        
-        fd = open(FORK_TEST_FILE, O_RDWR | O_CREATE);
-        write(fd, FORK_STR, FORK_STR_LEN);
-        close(fd);
-        
-        // child process doesn't have other thread in address space 
-        // join must fail since thread doens't belong to group
-        if(join(not_fork_func_id) != -1){
-            eprintf("fork test failed join should not happend");
-        }
-
-        exit();
-    }
-
-    // thread waits for child process to exit
-    wpid = wait(); 
-    if(wpid == pid){
-        
-        // reads the file modified by the child process 
-        fd = open(FORK_TEST_FILE, O_RDONLY);
-        read(fd, buf, FORK_STR_LEN);
-        buf[FORK_STR_LEN] = '\0';
-
-        // compare the content insider file
-        if(strcmp(buf, FORK_STR) == 0) {
-            sprintf("fork test"); 
-        } else {
-            eprintf("fork test child process not working correctly"); 
-        }
-        close(fd);
-
-    } else {
-        eprintf("fork test wait and not working");
-    }
     exit();
+  }
+
+  // thread waits for child process to exit
+  wpid = wait(); 
+  if(wpid == pid){
+    
+    // reads the file modified by the child process 
+    fd = open(FORK_TEST_FILE, O_RDONLY);
+    read(fd, buf, FORK_STR_LEN);
+    buf[FORK_STR_LEN] = '\0';
+
+    // compare the content insider file
+    if(strcmp(buf, FORK_STR) == 0) {
+      sprintf("fork test"); 
+    } else {
+      eprintf("fork test child process not working correctly"); 
+    }
+    close(fd);
+
+  } else {
+    eprintf("fork test wait and not working");
+  }
+  exit();
 }
 
 // thread making fork system call, creates new process with the only thread 
@@ -745,16 +746,16 @@ fork_func(void *agrs)
 int 
 fork_test() 
 {
-    // creates thread one for executing fork and one for increamenting global variable
-    not_fork_func_id = clone(not_fork_func, 0, TFLAGS, 0);
-    fork_func_id = clone(fork_func, 0, TFLAGS, 0);
-    
-    // join thread 
-    join(fork_func_id);
-    join(not_fork_func_id);
+  // creates thread one for executing fork and one for increamenting global variable
+  not_fork_func_id = clone(not_fork_func, 0, TFLAGS, 0);
+  fork_func_id = clone(fork_func, 0, TFLAGS, 0);
+  
+  // join thread 
+  join(fork_func_id);
+  join(not_fork_func_id);
 
-    // success 
-    return 0;
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -766,11 +767,11 @@ fork_test()
 int
 change_secret(void *args) 
 {   
-    for(;;){
-        ;
-    }
-    global_var = NEW_SECRET;
-    exit();
+  for(;;){
+    ;
+  }
+  global_var = NEW_SECRET;
+  exit();
 }
 
 // threads in the same thread group can kill each other.
@@ -779,24 +780,24 @@ change_secret(void *args)
 int 
 kill_test() 
 {
-    global_var = SECRET;
-    int new_secret = NEW_SECRET, tid;
-    
-    // create thread that modifies global variable 
-    tid = clone(change_secret, 0, TFLAGS, &new_secret); 
-    
-    // kill the thread 
-    tkill(tid);
-    
-    // should be able join killed thread
-    if(join(tid) == tid && global_var != NEW_SECRET){
-        sprintf("thread kill test"); 
-    } else{
-        eprintf("thread kill test");
-    }
+  global_var = SECRET;
+  int new_secret = NEW_SECRET, tid;
+  
+  // create thread that modifies global variable 
+  tid = clone(change_secret, 0, TFLAGS, &new_secret); 
+  
+  // kill the thread 
+  tkill(tid);
+  
+  // should be able join killed thread
+  if(join(tid) == tid && global_var != NEW_SECRET){
+    sprintf("thread kill test"); 
+  } else{
+    eprintf("thread kill test");
+  }
 
-    // success
-    return 0;
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -811,23 +812,23 @@ int __event_wait_tid__, __event_tid__;
 int
 event_wait_func(void *args) 
 {
-    // suspends the execution event thread completes
-    tsuspend(); 
-    global_var = global_var * 10 + AFTER_EVENT; 
-    exit();
+  // suspends the execution event thread completes
+  tsuspend(); 
+  global_var = global_var * 10 + AFTER_EVENT; 
+  exit();
 }
 
 // the function completes particular event
 int
 event_func(void *args)
 {
-    // does particular event 
-    sleep(10);
-    global_var = global_var * 10 + DURING_EVENT;
-    
-    // resumes particular thread which was waiting for event 
-    tresume(__event_wait_tid__);
-    exit();
+  // does particular event 
+  sleep(10);
+  global_var = global_var * 10 + DURING_EVENT;
+  
+  // resumes particular thread which was waiting for event 
+  tresume(__event_wait_tid__);
+  exit();
 }
 
 
@@ -838,20 +839,20 @@ event_func(void *args)
 int 
 event_wait_test() 
 {
-    global_var = 0;
-    __event_wait_tid__  = clone(event_wait_func, 0, TFLAGS, 0);
-    __event_tid__       = clone(event_func, 0, TFLAGS, 0);
-    
-    join(__event_tid__);
-    join(__event_wait_tid__);
-    
-    if(VALIDATE_EVENT(global_var)){
-        sprintf("event wait test"); 
-    } else{
-        eprintf("event wait test"); 
-    }
-    // success 
-    return 0;
+  global_var = 0;
+  __event_wait_tid__  = clone(event_wait_func, 0, TFLAGS, 0);
+  __event_tid__       = clone(event_func, 0, TFLAGS, 0);
+  
+  join(__event_tid__);
+  join(__event_wait_tid__);
+  
+  if(VALIDATE_EVENT(global_var)){
+    sprintf("event wait test"); 
+  } else{
+    eprintf("event wait test"); 
+  }
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -860,8 +861,8 @@ event_wait_test()
 int 
 infinite_recursion(void *agrs) 
 {
-    infinite_recursion(0);
-    exit();
+  infinite_recursion(0);
+  exit();
 }
 
 // when threads are created without passing stack parameter to clone system
@@ -871,11 +872,11 @@ infinite_recursion(void *agrs)
 int
 stack_smash_test() 
 {
-    int tid = clone(infinite_recursion, 0, TFLAGS, 0);
-    join(tid);
-    sprintf("stack smash test");
-    // succcess
-    return 0;
+  int tid = clone(infinite_recursion, 0, TFLAGS, 0);
+  join(tid);
+  sprintf("stack smash test");
+  // succcess
+  return 0;
 }
 
 // ===========================================================================
@@ -892,8 +893,8 @@ stack_smash_test()
 int 
 kthread_test_func()
 {
-    sleep(100);
-    kthread_exit();
+  sleep(100);
+  kthread_exit();
 }
 
 // tests for maximum number of threading that library can create 
@@ -901,31 +902,31 @@ kthread_test_func()
 int 
 kthread_lib_max_thread_test() 
 {
-    kthread_t kth_pool[MAX_THREAD_TEST];
-    int thread_count = 0;
+  printf(1, "STRESS TEST 1 : \n");
+  
+  kthread_t kth_pool[MAX_THREAD_TEST];
+  int thread_count = 0;
 
-    printf(1, "STRESS TEST 1 : \n");
-
-    // creating the threads using kthread library
-    for(int i = 0; i < TOO_MANY_THREADS; i++){
-        if(kthread_create(kth_pool + i, kthread_test_func, 0) == -1){
-            break; 
-        }
-        thread_count++;
+  // creating the threads using kthread library
+  for(int i = 0; i < TOO_MANY_THREADS; i++){
+    if(kthread_create(kth_pool + i, kthread_test_func, 0) == -1){
+      break; 
     }
-    
-    // join the maximum threads that are created
-    for(int i = 0; i < thread_count; i++){
-        kthread_join(kth_pool + i);
-    }
+    thread_count++;
+  }
+  
+  // join the maximum threads that are created
+  for(int i = 0; i < thread_count; i++){
+    kthread_join(kth_pool + i);
+  }
 
-    // check for number of threads created 
-    if(thread_count < MAX_THREAD_COUNT) {
-        eprintf("kthread lib max thread ");    
-    } 
-    sprintf("kthread lib max thread ");    
-    // success 
-    return 0;
+  // check for number of threads created 
+  if(thread_count < MAX_THREAD_COUNT) {
+    eprintf("kthread lib max thread ");    
+  } 
+  sprintf("kthread lib max thread ");    
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -937,66 +938,66 @@ kthread_lib_max_thread_test()
 #define MAGIC_MULTIPLE      (10)
 
 typedef struct matrixargs{
-    int **a, **b, **c;  // matrix a, b, and c
-    int row;            // i is row of matrix a
-    int col;            // j is column of matrix b
-    int m;              // num of rows in a = num of columns in b
+  int **a, **b, **c;  // matrix a, b, and c
+  int row;            // i is row of matrix a
+  int col;            // j is column of matrix b
+  int m;              // num of rows in a = num of columns in b
 } matrixargs;
 
 void
 print_matrix(int **mat, int n, int m) 
 {
-    for(int i = 0; i < n; i++){
-        for(int j = 0; j < m; j++){
-            printf(1, "%d ", mat[i][j]);
-        }
-        printf(1, "\n");
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < m; j++){
+      printf(1, "%d ", mat[i][j]);
     }
     printf(1, "\n");
+  }
+  printf(1, "\n");
 }
 
 int **
 get_matrix(int n, int m) {
-    int **mat = (int **)malloc(sizeof(int *) * n);
-    if(mat == 0){
-        eprintf("malloc failed");
+  int **mat = (int **)malloc(sizeof(int *) * n);
+  if(mat == 0){
+    eprintf("malloc failed");
+  }
+  for(int i = 0; i < n; i++) {
+    mat[i] = (int *)malloc(sizeof(int) *m);
+    if(mat[i] == 0){
+      eprintf("malloc failed");
     }
-    for(int i = 0; i < n; i++) {
-        mat[i] = (int *)malloc(sizeof(int) *m);
-        if(mat[i] == 0){
-            eprintf("malloc failed");
-        }
+  }
+  // initialize all the elements in matrix to 1
+  for(int i = 0; i < n; i++) {
+    for(int j = 0; j < m; j++) {
+      mat[i][j] = 1;
     }
-    // initialize all the elements in matrix to 1
-    for(int i = 0; i < n; i++) {
-        for(int j = 0; j < m; j++) {
-            mat[i][j] = 1;
-        }
-    }
-    return mat;
+  }
+  return mat;
 }
 
 void 
 free_matrix(int **arr, int n, int m) {
-    for(int i = 0; i < n; i++) {
-        free(arr[i]);
-    }
-    free(arr);
+  for(int i = 0; i < n; i++) {
+    free(arr[i]);
+  }
+  free(arr);
 }
 
 int
 multiply_row_col(void *args)
 {
-    matrixargs *ptr = (matrixargs *)args;
-    int i, j, m;
-    i = ptr->row, j = ptr->col;
-    m = ptr->m;
+  matrixargs *ptr = (matrixargs *)args;
+  int i, j, m;
+  i = ptr->row, j = ptr->col;
+  m = ptr->m;
 
-    ptr->c[i][j] = 0;
-    for(int k = 0; k < m; k++){
-        ptr->c[i][j] += ptr->a[i][k] * ptr->b[k][j];
-    }
-    kthread_exit();
+  ptr->c[i][j] = 0;
+  for(int k = 0; k < m; k++){
+    ptr->c[i][j] += ptr->a[i][k] * ptr->b[k][j];
+  }
+  kthread_exit();
 }
 
 
@@ -1006,58 +1007,58 @@ multiply_row_col(void *args)
 int 
 kthread_lib_multithreading_test()
 {
-    int **arr = get_matrix(N, M);
-    int **brr = get_matrix(M, P);
-    int **crr = get_matrix(N, P);
+  printf(1, "STRESS TEST 2 : \n");
 
-    // arguments to be passed for matrix multiplication
-    matrixargs args[N * P], temp; 
-    kthread_t kthread_pool[N * P];
+  int **arr = get_matrix(N, M);
+  int **brr = get_matrix(M, P);
+  int **crr = get_matrix(N, P);
 
-    printf(1, "STRESS TEST 2 : \n");
+  // arguments to be passed for matrix multiplication
+  matrixargs args[N * P], temp; 
+  kthread_t kthread_pool[N * P];
 
-    // matrices 
-    temp.a = arr;
-    temp.b = brr;
-    temp.c = crr;
-    temp.m = M;
-    
-    // matrix multiplication using kthreadlibrary
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < P; j++){
-            args[i * P + j] = temp;
-            args[i * P + j].row = i;
-            args[i * P + j].col = j;
-            if(kthread_create(kthread_pool + i * P + j, multiply_row_col,
-                              args + i * P + j) == -1){
-                eprintf("multithreading test"); 
-            }
-        }
+  // matrices 
+  temp.a = arr;
+  temp.b = brr;
+  temp.c = crr;
+  temp.m = M;
+  
+  // matrix multiplication using kthreadlibrary
+  for(int i = 0; i < N; i++){
+    for(int j = 0; j < P; j++){
+      args[i * P + j] = temp;
+      args[i * P + j].row = i;
+      args[i * P + j].col = j;
+      if(kthread_create(kthread_pool + i * P + j, multiply_row_col,
+                        args + i * P + j) == -1){
+        eprintf("multithreading test"); 
+      }
     }
-    
-    // waiting for all threads to complete 
-    for(int i = 0; i < N * P; i++){
-        if(kthread_join(kthread_pool + i)== -1){
-            eprintf("multithreading test"); 
-        }
+  }
+  
+  // waiting for all threads to complete 
+  for(int i = 0; i < N * P; i++){
+    if(kthread_join(kthread_pool + i)== -1){
+      eprintf("multithreading test"); 
     }
+  }
 
-    // verifying if the matrix multiplication is correct 
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < P; j++){
-            if(crr[i][j] != M){
-                eprintf("multithreading test"); 
-            }
-        }
+  // verifying if the matrix multiplication is correct 
+  for(int i = 0; i < N; i++){
+    for(int j = 0; j < P; j++){
+      if(crr[i][j] != M){
+        eprintf("multithreading test"); 
+      }
     }
-    
-    free_matrix(arr, N, M);
-    free_matrix(brr, M, P);
-    free_matrix(crr, N, P);
+  }
+  
+  free_matrix(arr, N, M);
+  free_matrix(brr, M, P);
+  free_matrix(crr, N, P);
 
-    sprintf("multithreading test");
-    // success
-    return 0;
+  sprintf("multithreading test");
+  // success
+  return 0;
 }
 
 
@@ -1074,25 +1075,25 @@ semaphore sem;
 int
 filewrite_func1(void *args)
 {
-    semaphore_wait(&sem);    
-    for(int i = 0; i < THREAD_STR_LEN; i++) {
-        write(tfd, &thread_str1[i], 1);
-        sleep(10);
-    }
-    semaphore_signal(&sem);    
-    kthread_exit();
+  semaphore_wait(&sem);    
+  for(int i = 0; i < THREAD_STR_LEN; i++) {
+    write(tfd, &thread_str1[i], 1);
+    sleep(10);
+  }
+  semaphore_signal(&sem);    
+  kthread_exit();
 }
 
 int
 filewrite_func2(void *agrs)
 {
-    semaphore_wait(&sem);    
-    for(int i = 0; i < THREAD_STR_LEN; i++) {
-        write(tfd, &thread_str2[i], 1);
-        sleep(10);
-    }
-    semaphore_signal(&sem);    
-    kthread_exit();
+  semaphore_wait(&sem);    
+  for(int i = 0; i < THREAD_STR_LEN; i++) {
+    write(tfd, &thread_str2[i], 1);
+    sleep(10);
+  }
+  semaphore_signal(&sem);    
+  kthread_exit();
 }
 
 // the semaphore implementation issues synchronization among threads
@@ -1101,47 +1102,47 @@ filewrite_func2(void *agrs)
 int 
 kthread_semaphore_test() 
 {
-    kthread_t th1, th2;
-    char str[128];
+  kthread_t th1, th2;
+  char str[128];
 
-    // binary semaphore mutex 
-    semaphore_init(&sem, 1);
+  // binary semaphore mutex 
+  semaphore_init(&sem, 1);
 
-    tfd = open("sem.txt", O_RDWR | O_CREATE); 
-    if(tfd == -1){
-        eprintf("cannot open file");
-    }
+  tfd = open("sem.txt", O_RDWR | O_CREATE); 
+  if(tfd == -1){
+    eprintf("cannot open file");
+  }
 
-    kthread_create(&th1, filewrite_func1, 0);
-    kthread_create(&th2, filewrite_func2, 0);
-        
-    kthread_join(&th1);
-    kthread_join(&th2);
+  kthread_create(&th1, filewrite_func1, 0);
+  kthread_create(&th2, filewrite_func2, 0);
+      
+  kthread_join(&th1);
+  kthread_join(&th2);
 
-    close(tfd);
-        
-    // verifying if synchronization order
-    tfd = open("sem.txt", O_RDONLY); 
-    
-    // first str1 should be written 
-    read(tfd, str, THREAD_STR_LEN);
-    str[THREAD_STR_LEN] = '\0';
-    if(strcmp(str, thread_str1) != 0 && strcmp(str, thread_str2) != 0){
-        eprintf("semaphore test");
-    }
+  close(tfd);
+      
+  // verifying if synchronization order
+  tfd = open("sem.txt", O_RDONLY); 
+  
+  // first str1 should be written 
+  read(tfd, str, THREAD_STR_LEN);
+  str[THREAD_STR_LEN] = '\0';
+  if(strcmp(str, thread_str1) != 0 && strcmp(str, thread_str2) != 0){
+    eprintf("semaphore test");
+  }
 
-    // second str2 should be written 
-    read(tfd, str, THREAD_STR_LEN);
-    str[THREAD_STR_LEN] = '\0';
-    if(strcmp(str, thread_str2) != 0 && strcmp(str, thread_str1) != 0){
-        eprintf("semaphore test");
-    }
-    
-    close(tfd);
+  // second str2 should be written 
+  read(tfd, str, THREAD_STR_LEN);
+  str[THREAD_STR_LEN] = '\0';
+  if(strcmp(str, thread_str2) != 0 && strcmp(str, thread_str1) != 0){
+    eprintf("semaphore test");
+  }
+  
+  close(tfd);
 
-    sprintf("semaphore test");
-    // success 
-    return 0;
+  sprintf("semaphore test");
+  // success 
+  return 0;
 }
 
 // ===========================================================================
@@ -1164,28 +1165,28 @@ struct splock s;
 int 
 update_func1(void *args) 
 {
-    acquire_splock(&s);
-    for(int i = 0; i < MAX_SIZE / 2; i++) {
-        race_arr[race_index] = VAL1; 
-        sleep(10);
-        race_index++;
-    }
-    release_splock(&s);
-    exit();
+  acquire_splock(&s);
+  for(int i = 0; i < MAX_SIZE / 2; i++) {
+    race_arr[race_index] = VAL1; 
+    sleep(10);
+    race_index++;
+  }
+  release_splock(&s);
+  exit();
 }
 
 // updates the global array 
 int 
 update_func2(void *args) 
 {
-    acquire_splock(&s);
-    for(int i = 0; i < MAX_SIZE / 2; i++) {
-        race_arr[race_index] = VAL2; 
-        sleep(10);
-        race_index++;
-    }
-    release_splock(&s);
-    exit();
+  acquire_splock(&s);
+  for(int i = 0; i < MAX_SIZE / 2; i++) {
+    race_arr[race_index] = VAL2; 
+    sleep(10);
+    race_index++;
+  }
+  release_splock(&s);
+  exit();
 }
 
 // since we cannot user xv6 provided spinlock which is meant for xv6 kernel
@@ -1193,30 +1194,30 @@ update_func2(void *args)
 int 
 uspinlock_test()
 {
-    kthread_t th1, th2;
-    init_splock(&s);
-    
-    kthread_create(&th1, update_func1, 0);
-    kthread_create(&th2, update_func2, 0);
-    
-    kthread_join(&th1);
-    kthread_join(&th2);
-    
-    // first half of the array must have same value either 1 or 2
-    // similarly for the second half of the array values.
-    for(int i = 0; i < MAX_SIZE / 2; i++){
-        if(race_arr[0] != race_arr[i]){
-            eprintf("spinlock test");
-        }
+  kthread_t th1, th2;
+  init_splock(&s);
+  
+  kthread_create(&th1, update_func1, 0);
+  kthread_create(&th2, update_func2, 0);
+  
+  kthread_join(&th1);
+  kthread_join(&th2);
+  
+  // first half of the array must have same value either 1 or 2
+  // similarly for the second half of the array values.
+  for(int i = 0; i < MAX_SIZE / 2; i++){
+    if(race_arr[0] != race_arr[i]){
+      eprintf("spinlock test");
     }
-    for(int i = MAX_SIZE / 2; i < MAX_SIZE; i++) {
-        if(race_arr[MAX_SIZE / 2] != race_arr[i]) {
-            eprintf("spinlock test");
-        }
+  }
+  for(int i = MAX_SIZE / 2; i < MAX_SIZE; i++) {
+    if(race_arr[MAX_SIZE / 2] != race_arr[i]) {
+      eprintf("spinlock test");
     }
-    
-    sprintf("spinlock test");
-    exit();
+  }
+  
+  sprintf("spinlock test");
+  exit();
 }
 // ===========================================================================
 
@@ -1226,35 +1227,35 @@ int
 main(int argc, char *argv[])
 {
     
-    // SYSTEM CALL TESTS 
-    
-    clone_join_test();                  // simple clone and join system call
-    wrong_syscall_test();               // wrong ways to call clone and join
-    syscall_flags_test();               // flags passed to system call
-    nested_clone_join_test();           // nested clone and join system call
-    kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
-    peer_relationship_test();           // threads sharing peer to peer relationship
-    wait_join_test();                   // join and wait both work correctly 
-    clone_without_join_test();          // clone thread without join 
-    exec_test();                        // exec test for threads
-    two_exec_test();                    // exec concurrently done by seperate threads
-    fork_test();                        // thread calls fork system call
-    kill_test();                        // kills thread 
-    event_wait_test();                  // suspend and resume test for threads 
-    stack_smash_test();                 // stack smash detection for threads
+  // SYSTEM CALL TESTS 
+  
+  clone_join_test();                  // simple clone and join system call
+  wrong_syscall_test();               // wrong ways to call clone and join
+  syscall_flags_test();               // flags passed to system call
+  nested_clone_join_test();           // nested clone and join system call
+  kernel_clone_stack_alloc();         // kernel allocating thread execution stack 
+  peer_relationship_test();           // threads sharing peer to peer relationship
+  wait_join_test();                   // join and wait both work correctly 
+  clone_without_join_test();          // clone thread without join 
+  exec_test();                        // exec test for threads
+  two_exec_test();                    // exec concurrently done by seperate threads
+  fork_test();                        // thread calls fork system call
+  kill_test();                        // kills thread 
+  event_wait_test();                  // suspend and resume test for threads 
+  stack_smash_test();                 // stack smash detection for threads
 
-    // KTHREAD LIBRARY TESTS
-    // stress tests
-     
-    kthread_lib_max_thread_test();      // max threads created by kthread lib
-    kthread_lib_multithreading_test();  // multithreaded program written for test
-    kthread_semaphore_test();           // synchorization using semaphore
+  // KTHREAD LIBRARY TESTS
+  // stress tests
+   
+  kthread_lib_max_thread_test();      // max threads created by kthread lib
+  kthread_lib_multithreading_test();  // multithreaded program written for test
+  kthread_semaphore_test();           // synchorization using semaphore
 
-    // SYNCHRONIZATION ISSUES AND SOLUTIONS
-    
-    uspinlock_test();                   // userland spinlock code test
+  // SYNCHRONIZATION ISSUES AND SOLUTIONS
+  
+  uspinlock_test();                   // userland spinlock code test
 
-    exit();
+  exit();
 }
 
 

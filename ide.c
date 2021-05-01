@@ -8,8 +8,8 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
-#include "proc.h"
 #include "sleeplock.h"
+#include "proc.h"
 #include "fs.h"
 #include "buf.h"
 

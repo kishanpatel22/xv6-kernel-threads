@@ -5,6 +5,7 @@
 #include "mmu.h"
 #include "x86.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "cflags.h"
 
@@ -119,6 +120,9 @@ found:
 
   // the stack is not allocated by kernel
   p->tstackalloc = 0;
+    
+  // initializes the sleep for 
+  initsleeplock(&(p->tlock), "thread lock");
 
   return p;
 }
@@ -170,10 +174,11 @@ int
 growproc(int n)
 {
   uint sz;
-  struct proc *curproc = myproc();
-    
+  struct proc *curproc = myproc(), *tleader;
+  tleader = THREAD_LEADER(curproc);
+
   // page directory is shared but actual size of process is with group leader
-  sz = THREAD_LEADER(curproc)->sz;
+  sz = tleader->sz;
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
@@ -181,11 +186,12 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
-
+    
+  // update the thread size 
   curproc->sz = sz;
   // update the thread leader size 
-  THREAD_LEADER(curproc)->sz = sz;
-
+  tleader->sz = sz;
+    
   switchuvm(curproc);
   return 0;
 }
@@ -196,7 +202,7 @@ growproc(int n)
 int
 fork(void)
 {
-    return clone((void *)myproc()->tf->eip, 0, CLONE_FS | CLONE_FILES, 0); 
+  return clone((void *)myproc()->tf->eip, 0, CLONE_FS | CLONE_FILES, 0); 
 }
 
 // clone system call implementation for xv6 
@@ -207,158 +213,158 @@ fork(void)
 int 
 clone(int (*func)(void *args), void *child_stack, int flags, void *args) 
 {
-    struct proc *np;
-    struct proc *curproc = myproc(), *tleader;
-    char *guard_page;
-    int retid;
-    uint sp, stack_args[2];
-        
-    // modify or duplicate all the fileds of struct proc accordingly 
-    // to create a child process which is clone of the current process 
-    if((np = allocproc()) == 0) {
-        return -1;
+  struct proc *np;
+  struct proc *curproc = myproc(), *tleader;
+  char *guard_page;
+  int retid;
+  uint sp, stack_args[2];
+      
+  // modify or duplicate all the fileds of struct proc accordingly 
+  // to create a child process which is clone of the current process 
+  if((np = allocproc()) == 0) {
+    return -1;
+  }
+
+  // thread leader in the group of threads executed with same pid
+  tleader = THREAD_LEADER(curproc);
+  
+  // size of the child clone is same as parent 
+  np->sz = tleader->sz;
+  
+  // the parent of the child process 
+  np->parent = tleader;
+  
+  // virtual address space 
+
+  // child and parent sharing same virtual address space 
+  if(flags & CLONE_VM) {
+    // page directory will be same, since child shares virtual memory 
+    np->pgdir = tleader->pgdir; 
+  } 
+  // child and parent not sharing same virtual address space
+  else {
+    // Copy out text / data + heap + stack region of process from thread leader
+    if((np->pgdir = copyuvm(tleader->pgdir, tleader->sz)) == 0){
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
     }
-
-    // thread leader in the group of threads executed with same pid
-    tleader = THREAD_LEADER(curproc);
-    
-    // size of the child clone is same as parent 
-    np->sz = tleader->sz;
-    
-    // the parent of the child process 
-    np->parent = tleader;
-    
-    // virtual address space 
-
-    // child and parent sharing same virtual address space 
-    if(flags & CLONE_VM) {
-        // page directory will be same, since child shares virtual memory 
-        np->pgdir = tleader->pgdir; 
+  }
+  
+  // child stack for execution 
+  
+  // child process sharing the virtual address space 
+  if((CLONE_VM & flags)) {
+    // the child process needs stack for execution 
+    if(!child_stack) {
+      // guard page of the group leader thread 
+      guard_page = tleader->tstack - 2 * PGSIZE;
+      // modify the page directory entry by extending the virtual address 
+      if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
+        kfree(np->kstack);
+        np->kstack = 0;
+        np->state = UNUSED;
+        return -1; 
+      }
+      // the stack is allocated by the kernel 
+      np->tstackalloc = 1;
     } 
-    // child and parent not sharing same virtual address space
+    // allocated stack for child process 
     else {
-        // Copy out text / data + heap + stack region of process from thread leader
-        if((np->pgdir = copyuvm(tleader->pgdir, tleader->sz)) == 0){
-            kfree(np->kstack);
-            np->kstack = 0;
-            np->state = UNUSED;
-            return -1;
-        }
+      np->tstack = (char *)child_stack;
     }
-    
-    // child stack for execution 
-    
-    // child process sharing the virtual address space 
-    if((CLONE_VM & flags)) {
-        // the child process needs stack for execution 
-        if(!child_stack) {
-            // guard page of the group leader thread 
-            guard_page = tleader->tstack - 2 * PGSIZE;
-            // modify the page directory entry by extending the virtual address 
-            if((np->tstack = cloneuvm(tleader->pgdir, tleader->sz, guard_page)) == 0) {
-                kfree(np->kstack);
-                np->kstack = 0;
-                np->state = UNUSED;
-                return -1; 
-            }
-            // the stack is allocated by the kernel 
-            np->tstackalloc = 1;
-        } 
-        // allocated stack for child process 
-        else {
-            np->tstack = (char *)child_stack;
-        }
+  }
+  // child process not sharing the virtual address space
+  else {
+    np->tstack = tleader->tstack;
+    // thread trying to clone without sharing any virtual address space 
+    if(curproc != tleader) {
+      if(copy_thread_stack(np->pgdir, np->tstack - PGSIZE, tleader->pgdir, curproc->tstack - PGSIZE) == -1) {
+        return -1; 
+      }
     }
-    // child process not sharing the virtual address space
-    else {
-        np->tstack = tleader->tstack;
-        // thread trying to clone without sharing any virtual address space 
-        if(curproc != tleader) {
-            if(copy_thread_stack(np->pgdir, np->tstack - PGSIZE, tleader->pgdir, curproc->tstack - PGSIZE) == -1) {
-                return -1; 
-            }
-        }
-    }
+  }
 
-    // context of parent for child process 
+  // context of parent for child process 
  
-    // trap frame 
-    *np->tf = *curproc->tf;
-   
-    // sharing of virtual address space 
-    if((flags & CLONE_VM)) {
-        // build the handcrafted stack frame for the function 
-        stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
-        stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
-        
-        // point the sp to the child stack
-        sp = (uint)np->tstack;
-        sp -= 2 * 4;
+  // trap frame 
+  *np->tf = *curproc->tf;
+  
+  // sharing of virtual address space 
+  if((flags & CLONE_VM)) {
+    // build the handcrafted stack frame for the function 
+    stack_args[0] = (uint)0xffffffff;   // 4 bytes fake instruction pointer  
+    stack_args[1] = (uint)args;         // 4 bytes of the argument pointer 
+    
+    // point the sp to the child stack
+    sp = (uint)np->tstack;
+    sp -= 2 * 4;
  
-        // add the return address and argument pointer on the stack 
-        if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
-            kfree(np->kstack);
-            np->kstack = 0;
-            np->state = UNUSED;
-            return -1;
-        }
-    } 
-    // not sharing the same virtual address space 
-    else {
-        // Clear %eax so that fork returns 0 in the child.
-        np->tf->eax = 0;
-        if(curproc != tleader) {
-            np->tf->esp = (uint)np->tstack - ((uint)curproc->tstack - np->tf->esp);
-        }
-        sp = np->tf->esp;
-    } 
-    
-    // change of execution point depending upon the flag passed 
-    np->tf->eip = (uint)func;           // change instruction pointer for execution 
-    np->tf->esp = sp;                   // change stack pointer for execution 
-    
-    if((flags & CLONE_FILES)) {
-        // copy all the open file descriptors from the file table 
-        for(uint i = 0; i < NOFILE; i++) {
-            if(curproc->ofile[i]) {
-                np->ofile[i] = filedup(curproc->ofile[i]);
-            }
-        }
-    } 
-    
-    if((flags & CLONE_FS)) {
-        np->cwd = idup(curproc->cwd);
+    // add the return address and argument pointer on the stack 
+    if(copyout(np->pgdir, sp, stack_args, 2 * sizeof(uint)) == -1) {
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
     }
-    
-    // name of the child process is same as that of the original process 
-    safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-    
-    if((flags & CLONE_THREAD)) {
-        // child process formed would be thread, thus pid is same as thread id
-        np->tid = np->pid;
-        
-        // pid of the clone child process is same as the parent process 
-        np->pid = curproc->pid;
-        
-        // return id is the thread id 
-        retid = np->tid;
-    } else {
-        // the child process is thread leader in different thread group
-        np->tid = -1;
-        
-        // return id is the process id
-        retid = np->pid;
+  } 
+  // not sharing the same virtual address space 
+  else {
+    // Clear %eax so that fork returns 0 in the child.
+    np->tf->eax = 0;
+    if(curproc != tleader) {
+      np->tf->esp = (uint)np->tstack - ((uint)curproc->tstack - np->tf->esp);
     }
+    sp = np->tf->esp;
+  } 
+  
+  // change of execution point depending upon the flag passed 
+  np->tf->eip = (uint)func;           // change instruction pointer for execution 
+  np->tf->esp = sp;                   // change stack pointer for execution 
+  
+  if((flags & CLONE_FILES)) {
+    // copy all the open file descriptors from the file table 
+    for(uint i = 0; i < NOFILE; i++) {
+      if(curproc->ofile[i]) {
+        np->ofile[i] = filedup(curproc->ofile[i]);
+      }
+    }
+  } 
+  
+  if((flags & CLONE_FS)) {
+    np->cwd = idup(curproc->cwd);
+  }
+  
+  // name of the child process is same as that of the original process 
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+  
+  if((flags & CLONE_THREAD)) {
+    // child process formed would be thread, thus pid is same as thread id
+    np->tid = np->pid;
     
-    acquire(&ptable.lock);
+    // pid of the clone child process is same as the parent process 
+    np->pid = curproc->pid;
     
-    // child process state is set to runnable for scheduling
-    np->state = RUNNABLE;
+    // return id is the thread id 
+    retid = np->tid;
+  } else {
+    // the child process is thread leader in different thread group
+    np->tid = -1;
     
-    release(&ptable.lock);
+    // return id is the process id
+    retid = np->pid;
+  }
+  
+  acquire(&ptable.lock);
+  
+  // child process state is set to runnable for scheduling
+  np->state = RUNNABLE;
+  
+  release(&ptable.lock);
 
-    // returns the thread id of the child process 
-    return retid;
+  // returns the thread id of the child process 
+  return retid;
 }
 
 // Exit the current process.  Does not return.
@@ -469,62 +475,62 @@ wait(void)
 int 
 join(int tid) 
 {
-    struct proc *p, *curproc = myproc(), *tleader;
-    int join_thread_exits, jtid;
-    
-    // cannot join any process 
-    if(tid == -1){
-        return -1;
-    }
-    
-    tleader = THREAD_LEADER(curproc);
-
-    join_thread_exits = 0;
-    // check if the thread joining the tid both belong to same thread group
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->tid == tid && p->parent == tleader) {
-            join_thread_exits = 1; 
-            break;
-        }
-    }
-
-    // join thread either doesn't exists or it doesn't belong to same group
-    if(!join_thread_exits || curproc->killed){
-        return -1;
-    }
-    
-    acquire(&ptable.lock);
-
-    // suspend execution of current thread and wait for completion of tid thread
-    for(;;){
-        // thread is killed by some other thread in group
-        if(curproc->killed){
-            release(&ptable.lock);
-            return -1;
-        }
-        if(p->state == ZOMBIE){
-            // Found the thread 
-            jtid = p->tid;
-            kfree(p->kstack);
-            p->kstack = 0;
-            if(p->tstackalloc){
-                freecloneuvm(p->pgdir, p->tstack);
-            }
-            p->pgdir = 0;
-            p->pid = 0;
-            p->tid = 0;
-            p->tstack = 0;
-            p->parent = 0;
-            p->name[0] = 0;
-            p->killed = 0;
-            p->state = UNUSED;
-            release(&ptable.lock);
-            return jtid;
-        } 
-        // Wait for thread to complete (See wakeup1 call in proc_exit.)
-        sleep(tleader, &ptable.lock);  
-    }     
+  struct proc *p, *curproc = myproc(), *tleader;
+  int join_thread_exits, jtid;
+  
+  // cannot join any process 
+  if(tid == -1){
     return -1;
+  }
+  
+  tleader = THREAD_LEADER(curproc);
+
+  join_thread_exits = 0;
+  // check if the thread joining the tid both belong to same thread group
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->tid == tid && p->parent == tleader) {
+      join_thread_exits = 1; 
+      break;
+    }
+  }
+
+  // join thread either doesn't exists or it doesn't belong to same group
+  if(!join_thread_exits || curproc->killed){
+    return -1;
+  }
+  
+  acquire(&ptable.lock);
+
+  // suspend execution of current thread and wait for completion of tid thread
+  for(;;){
+    // thread is killed by some other thread in group
+    if(curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+    if(p->state == ZOMBIE){
+      // Found the thread 
+      jtid = p->tid;
+      kfree(p->kstack);
+      p->kstack = 0;
+      if(p->tstackalloc){
+          freecloneuvm(p->pgdir, p->tstack);
+      }
+      p->pgdir = 0;
+      p->pid = 0;
+      p->tid = 0;
+      p->tstack = 0;
+      p->parent = 0;
+      p->name[0] = 0;
+      p->killed = 0;
+      p->state = UNUSED;
+      release(&ptable.lock);
+      return jtid;
+    } 
+    // Wait for thread to complete (See wakeup1 call in proc_exit.)
+    sleep(tleader, &ptable.lock);  
+  }     
+  return -1;
 }
 
 //PAGEBREAK: 42
@@ -752,71 +758,70 @@ tkill(int tid)
 int 
 tgkill(void) 
 {
-     
-    struct proc *curproc = myproc(), *p;
-    int havethreads;
-    
-    // only thread leader can kill threads in group 
-    if(THREAD_LEADER(curproc) != curproc){
-        return -1;
-    }
-        
-    acquire(&ptable.lock);
+  struct proc *curproc = myproc(), *p;
+  int havethreads;
+  
+  // only thread leader can kill threads in group 
+  if(THREAD_LEADER(curproc) != curproc){
+    return -1;
+  }
+      
+  acquire(&ptable.lock);
 
-    // make all the threads in group to die (all process with same pid will be killed)
+  // make all the threads in group to die (all process with same pid will be killed)
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == curproc->pid && p->tid != -1){
+      p->killed = 1; 
+      // some threads might be sleeping wake up them to kill
+      if(p->state == SLEEPING){
+        p->state = RUNNABLE;
+        p->chan = 0;
+      }
+    }
+  }
+  // now let all the threads finish and wait for them become zombie
+  for(;;){
+    havethreads = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->pid == curproc->pid && p->tid != -1){
-        p->killed = 1; 
-        // some threads might be sleeping wake up them to kill
-        if(p->state == SLEEPING){
-          p->state = RUNNABLE;
-          p->chan = 0;
+      if(p->pid != curproc->pid || p->tid == -1)
+        continue;
+      // thread in group has already died
+      if(p->state == ZOMBIE){
+        kfree(p->kstack);
+        p->kstack = 0;
+        if(p->tstackalloc){
+          freecloneuvm(p->pgdir, p->tstack);
         }
-      }
-    }
-    // now let all the threads finish and wait for them become zombie
-    for(;;){
-      havethreads = 0;
-      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->pid != curproc->pid || p->tid == -1)
-          continue;
-        // thread in group has already died
-        if(p->state == ZOMBIE){
-          kfree(p->kstack);
-          p->kstack = 0;
-          if(p->tstackalloc){
-            freecloneuvm(p->pgdir, p->tstack);
-          }
-          p->pid = 0;
-          p->tid = 0;
-          p->tstack = 0;
-          p->parent = 0;
-          p->name[0] = 0;
-          p->killed = 0;
-          p->state = UNUSED;
-        } 
-        // thread in group is not died yet so suspend untill it dies.
-        else {
-          havethreads = 1; 
-          break;
-        }
-      }
-      // group leader doesn't have any threads 
-      if(!havethreads){
-          break;
+        p->pid = 0;
+        p->tid = 0;
+        p->tstack = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
       } 
-      // the thread leader gets killed
-      if(curproc->killed) {
-        release(&ptable.lock);
-        return -1;
+      // thread in group is not died yet so suspend untill it dies.
+      else {
+        havethreads = 1; 
+        break;
       }
-      // sleep for an exisiting thread in group to be killed
-      sleep(curproc, &ptable.lock);
     }
+    // group leader doesn't have any threads 
+    if(!havethreads){
+        break;
+    } 
+    // the thread leader gets killed
+    if(curproc->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+    // sleep for an exisiting thread in group to be killed
+    sleep(curproc, &ptable.lock);
+  }
 
-    release(&ptable.lock);
-    // successfully killed all threads in group
-    return 0;
+  release(&ptable.lock);
+  // successfully killed all threads in group
+  return 0;
 }
 
 //PAGEBREAK: 36

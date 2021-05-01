@@ -44,6 +44,7 @@ struct proc {
   int tid;                     // Thread ID
   char *tstack;                // Thread execution stack virtual address 
   int tstackalloc;             // if non-zero, stack allocated by kernel 
+  struct sleeplock tlock;      // Thread sleep lock 
   struct proc *parent;         // Parent process
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process

@@ -3,9 +3,9 @@
 #include "param.h"
 #include "mmu.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "fs.h"
-#include "sleeplock.h"
 #include "file.h"
 
 #define PIPESIZE 512
