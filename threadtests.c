@@ -881,9 +881,63 @@ stack_smash_test()
   int tid = clone(infinite_recursion, 0, TFLAGS, 0);
   join(tid);
   sprintf("stack smash test");
-  // succcess
+  // success
   return 0;
 }
+
+// ===========================================================================
+
+#define MAX_GROW_PROC_THREADS   (10)
+#define NUM_ELEMENTS            (1024)
+#define MEM_SIZE                (NUM_ELEMENTS * sizeof(int))
+
+// buffer for holding the allocated memory
+int *buffers[MAX_GROW_PROC_THREADS];
+
+void
+check_memory_buffer(int *buffer) 
+{
+    for(int i = 0; i < NUM_ELEMENTS; i++){
+       // should be able to dereference memory 
+       (*(buffer + i))++;
+    }
+}
+
+int
+allocate_mem_func(void *args)
+{
+    int i = *((int *)args);
+    buffers[i] = malloc(MEM_SIZE);
+    exit();
+}
+
+int 
+grow_proc_test()
+{
+    int tids[MAX_GROW_PROC_THREADS], args[MAX_GROW_PROC_THREADS];
+
+    for(int i = 0; i < MAX_GROW_PROC_THREADS; i++){
+      args[i] = i;
+      tids[i] = clone(allocate_mem_func, 0, TFLAGS, args + i);
+    }
+
+    for(int i = 0; i < MAX_GROW_PROC_THREADS; i++){
+      join(tids[i]); 
+    }
+    
+    // should be able to access the allocate memory by indiviual threads
+    for(int i = 0; i < MAX_GROW_PROC_THREADS; i++){
+        check_memory_buffer(buffers[i]);
+        free(buffers[i]);
+    } 
+    
+    sprintf("grow proc test");
+
+    // success;
+    return 0;
+}
+
+
 
 // ===========================================================================
 // ===========================================================================
@@ -1245,6 +1299,8 @@ main(int argc, char *argv[])
   kill_test();                        // kills thread 
   event_wait_test();                  // suspend and resume test for threads 
   stack_smash_test();                 // stack smash detection for threads
+  grow_proc_test();                   // grow proc tests
+
 
   // KTHREAD LIBRARY TESTS
   // stress tests
