@@ -140,9 +140,16 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
+
+  acquire(&(THREAD_LEADER(myproc())->tlock));
+
   addr = THREAD_LEADER(myproc())->sz;
-  if(growproc(n) < 0)
+  if(growproc(n) < 0) {
+    release(&(THREAD_LEADER(myproc())->tlock));
     return -1;
+  }
+  release(&(THREAD_LEADER(myproc())->tlock));
+
   return addr;
 }
 

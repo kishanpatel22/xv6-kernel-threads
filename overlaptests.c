@@ -24,8 +24,8 @@
 int 
 sh_overlap_func(void *agrs) 
 {
-    sleep(100);
-    exit();
+  sleep(100);
+  exit();
 }
 
 // the kernel clone system call allocates stacks from KERNEBASE towards size
@@ -48,29 +48,28 @@ sh_overlap_func(void *agrs)
 int 
 stack_heap_overlap_test()
 {
-    uint mem_size = 200 * MB - 16 * KB - 8 * KB - 4 *KB;
-    int tid1, tid2;
-    void *mem_buffer = malloc(mem_size);
-    if(mem_buffer == 0){
-        eprintf("malloc failed");
-        exit();
-    }
-    tid1 = clone(sh_overlap_func, 0, TFLAGS, 0);
-    if(tid1 == -1){
-        eprintf("stack heap overlap");
-        exit();
-    }
-    tid2 = clone(sh_overlap_func, 0, TFLAGS, 0);
-    if(tid2 != -1) {
-        eprintf("stack heap overlap");
-    }
-    join(tid1);
-    join(tid2);
-    free(mem_buffer);
+  uint mem_size = 200 * MB - 16 * KB - 8 * KB - 4 *KB;
+  int tid1, tid2;
+  void *mem_buffer = malloc(mem_size);
+  if(mem_buffer == 0){
+    eprintf("malloc failed");
+    exit();
+  }
+  tid1 = clone(sh_overlap_func, 0, TFLAGS, 0);
+  if(tid1 == -1){
+    eprintf("stack heap overlap");
+    exit();
+  }
+  tid2 = clone(sh_overlap_func, 0, TFLAGS, 0);
+  if(tid2 != -1) {
+    eprintf("stack heap overlap");
+  }
+  join(tid1);
 
-    sprintf("stack heap overlap");
-    // success
-    return 0;
+  free(mem_buffer);
+  sprintf("stack heap overlap");
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -79,10 +78,10 @@ stack_heap_overlap_test()
 int 
 hs_overlap_func(void *args)
 {
-    while(1){
-      ;
-    }
-    exit();
+  while(1){
+    ;
+  }
+  exit();
 }
 
 // heap crossing the stack leads to panic 
@@ -90,20 +89,20 @@ hs_overlap_func(void *args)
 int
 heap_stack_overlap_test()
 {
-    void *mem_buffer;
-    uint mem_size = 200 * MB - 16 * KB;
-    int tid1 = clone(hs_overlap_func, 0, TFLAGS, 0);
-    
-    mem_buffer = malloc(mem_size);
-    if(mem_buffer != 0){
-        eprintf("heap stack overlap");
-        exit();
-    }
-    tkill(tid1);
-    
-    sprintf("heap stack overlap");
-    // success
-    return 0;
+  void *mem_buffer;
+  uint mem_size = 200 * MB - 16 * KB;
+  int tid1 = clone(hs_overlap_func, 0, TFLAGS, 0);
+  
+  mem_buffer = malloc(mem_size);
+  if(mem_buffer != 0){
+    eprintf("heap stack overlap");
+    exit();
+  }
+  tkill(tid1);
+  
+  sprintf("heap stack overlap");
+  // success
+  return 0;
 }
 
 // ===========================================================================
@@ -111,8 +110,8 @@ heap_stack_overlap_test()
 int
 main(int argc, char *argv[])
 {
-    stack_heap_overlap_test();          // stack crossing heap test
-    heap_stack_overlap_test();          // heap crossing stack test
-    exit();
+  stack_heap_overlap_test();          // stack crossing heap test
+  heap_stack_overlap_test();          // heap crossing stack test
+  exit();
 }
 

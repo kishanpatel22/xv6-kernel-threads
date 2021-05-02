@@ -13,6 +13,8 @@ void init_splock(splock *s) {
     s->locked = 0;
 }
 
+// The code has be taken as it is from xv6 kernel (for implementing userland spin locks)
+
 // atomic test and set hardware based instruction 
 static inline uint
 xchg(volatile uint *addr, uint newval)

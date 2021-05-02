@@ -122,7 +122,7 @@ found:
   p->tstackalloc = 0;
     
   // initializes the sleep for 
-  initsleeplock(&(p->tlock), "thread lock");
+  initlock(&(p->tlock), "thread lock");
 
   return p;
 }
@@ -191,7 +191,7 @@ growproc(int n)
   curproc->sz = sz;
   // update the thread leader size 
   tleader->sz = sz;
-    
+   
   switchuvm(curproc);
   return 0;
 }
