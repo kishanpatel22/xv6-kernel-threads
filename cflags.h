@@ -14,6 +14,8 @@
 //                thread group group
 #define CLONE_THREAD    (8)
 
+#define CLONE_PARENT    (16)
+
 // macro that can be used to create thread by passing 
 // appropriate flags arguments to clone system call
 #define TFLAGS          (CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD)

@@ -26,32 +26,42 @@ exec(char *path, char **argv)
   
   // thread calling exec
   if(curproc->tid != -1) {
+    
     // main leader now becomes peer in thread group
     tleader->tid = curproc->tid;
+    
     // current proc gets chance to become thread leader
     curproc->tid = -1;
     curproc->parent = tleader->parent;
+    
     // all the childrens of tleader are attached to the new tleader
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       // child process for the group leader
       if(p->parent == tleader && p->tid == -1){
         p->parent = curproc;
       }
-    } 
+    }
+    
     // all the threads now have new group leader 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->pid == curproc->pid && p != curproc){
         p->parent = curproc;
+        // also killing the thread at the same time
+        p->killed = 1;
       }
     }
-    // free the kernel allocated stack page if any 
+    
+    // free the kernel allocated stack page if any
     if(curproc->tstackalloc){
       freecloneuvm(curproc->pgdir, curproc->tstack);
     }
   }
-  release(&ptable.lock);
 
-  // kill all the threads in the group with currproc as thread leader
+  release(&ptable.lock);
+    
+  // context switch here will not affect -> all peers threads have set killed 
+    
+  // wait utill all the threads in the group die
   tgkill();
 
   begin_op();

@@ -50,23 +50,30 @@ stack_heap_overlap_test()
 {
   uint mem_size = 200 * MB - 16 * KB - 8 * KB - 4 *KB;
   int tid1, tid2;
+  
+  // should be able to allocate the memory 
   void *mem_buffer = malloc(mem_size);
   if(mem_buffer == 0){
     eprintf("malloc failed");
     exit();
   }
+  
+  // the first thread is created as enough pages are there 
   tid1 = clone(sh_overlap_func, 0, TFLAGS, 0);
   if(tid1 == -1){
     eprintf("stack heap overlap");
     exit();
   }
+
+  // the second thread is not created due to no page allocation 
   tid2 = clone(sh_overlap_func, 0, TFLAGS, 0);
   if(tid2 != -1) {
     eprintf("stack heap overlap");
   }
-  join(tid1);
 
+  join(tid1);
   free(mem_buffer);
+  
   sprintf("stack heap overlap");
   // success
   return 0;
@@ -91,8 +98,11 @@ heap_stack_overlap_test()
 {
   void *mem_buffer;
   uint mem_size = 200 * MB - 16 * KB;
+
+  // creating a thread 
   int tid1 = clone(hs_overlap_func, 0, TFLAGS, 0);
-  
+    
+  // should be able to allocate the thread 
   mem_buffer = malloc(mem_size);
   if(mem_buffer != 0){
     eprintf("heap stack overlap");

@@ -206,14 +206,19 @@ wrong_syscall_test()
 int fd;
 
 int
-no_open_file_func(void *args)
+open_file_func(void *args)
 {
-  int bytes_written = write(fd, FLAG_STR, strlen(FLAG_STR));
-  if(bytes_written != -1){
-    eprintf("flags test write in file");
+  char buf[128];
+  int bytes_read;
+    
+  // should be able to read from the offset zero 
+  bytes_read = read(fd, buf, strlen(FLAG_STR));
+  if(bytes_read == 0){
+    eprintf("flags test zero bytes read");
   }
-  // the stdin and stdout file descripters are not shared 
-  printf(1, "printf should not work\n");
+  if(strcmp(buf, FLAG_STR) != 0){
+    eprintf("flags test incorrect write");
+  }  
   exit();
 }
 
@@ -225,10 +230,10 @@ child_process_func(void *agrs)
   exit();
 }
 
-
 // clone flags arguments are shown as given below
 // TESTCASE: when clone doesn't share the virtual memory 
-//         : when clone doens't share the file descrpter table
+//         : when clone doesn't inherit the same file descripter table 
+//           (creates copy instead)
 int 
 syscall_flags_test()
 {
@@ -237,12 +242,13 @@ syscall_flags_test()
   if(fd == -1){
     eprintf("cannot create file");
   }
+  write(fd, FLAG_STR, strlen(FLAG_STR));
   
-  // not sharing the open file descripters in clone process 
-  tid = clone(no_open_file_func, 0, CLONE_VM | CLONE_FS | CLONE_THREAD, 0);
+  // not inheriting open file descripters in clone process 
+  tid = clone(open_file_func, 0, CLONE_VM | CLONE_FS | CLONE_THREAD, 0);
   join(tid);
   close(fd);
-  
+    
   // not sharing the virtual address space 
   pid = clone(child_process_func, 0, CLONE_FS | CLONE_FILES, 0);
   if(join(pid) != -1){
@@ -254,7 +260,7 @@ syscall_flags_test()
   if(pid != wait()) {
     eprintf("clone didn't created a process");
   }
-  
+
   sprintf("syscall flag test");
   // success
   return 0;
@@ -1147,11 +1153,6 @@ kthread_semaphore_test()
 
 // ===========================================================================
 
-
-// ===========================================================================
-// ==================== SYNCHRONIZATION ISSUES ==============================
-// ===========================================================================
-
 #define VAL1        (10)
 #define VAL2        (20)
 #define MAX_SIZE    (10)
@@ -1192,7 +1193,7 @@ update_func2(void *args)
 // since we cannot user xv6 provided spinlock which is meant for xv6 kernel
 // userland spin lock code was written and function test spin lock functionality 
 int 
-uspinlock_test()
+kthread_uspinlock_test()
 {
   kthread_t th1, th2;
   init_splock(&s);
@@ -1219,6 +1220,7 @@ uspinlock_test()
   sprintf("spinlock test");
   exit();
 }
+
 // ===========================================================================
 
 // ===========================================================================
@@ -1249,13 +1251,9 @@ main(int argc, char *argv[])
    
   kthread_lib_max_thread_test();      // max threads created by kthread lib
   kthread_lib_multithreading_test();  // multithreaded program written for test
+  kthread_uspinlock_test();           // userland spinlock code test
   kthread_semaphore_test();           // synchorization using semaphore
-
-  // SYNCHRONIZATION ISSUES AND SOLUTIONS
-  
-  uspinlock_test();                   // userland spinlock code test
 
   exit();
 }
-
 

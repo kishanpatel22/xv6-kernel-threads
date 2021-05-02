@@ -69,6 +69,7 @@ extern struct table ptable;
 //   fixed-size stack
 //   expandable heap
 
-// macro defination for getting the thread leader 
+// macro for getting the thread leader 
 #define THREAD_LEADER(curpoc)  ((curpoc)->tid == -1 ? (curpoc) : (curpoc)->parent)
+
 

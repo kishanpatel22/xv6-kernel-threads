@@ -148,6 +148,7 @@ sys_sbrk(void)
     release(&(THREAD_LEADER(myproc())->tlock));
     return -1;
   }
+
   release(&(THREAD_LEADER(myproc())->tlock));
 
   return addr;
