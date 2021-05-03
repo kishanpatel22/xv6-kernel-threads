@@ -230,6 +230,55 @@
 
 ## THREADING ISSUES 
 
+* Due to adding concept of threads, there arises may problems in existing
+  system calls like fork, exec, wait, exit, etc. The problems and solutions are 
+  discussed below
+
+#### fork 
+
+* The fork system call, creates new process or basically new thread group with
+  only thread group leader. However consider senario where peer thread does
+  fork system call should whole thread group must be forked ? or should only
+  the calling thread must be forked.
+
+* The xv6 implementation selects the second approach, the peer thread calling 
+  fork system call, only the context of the calling thread is copied not of all
+  thread group.
+
+* **NOTE** code/text, heap and global is obviously copied during fork, only the
+  execution stack of the calling thread is copied during fork.
+
+#### exec 
+
+* The exec system call replaces the whole thread group image with given new
+  process with thread group leader only. Note exec system call kills all the
+  peer threads executing in the group replaces the thread group image.
+
+* However there can be race for exec system call by two or more threads
+  concurrently calling exec system call. **NOTE** in such cases where two or 
+  more threads do exec system call, only one thread is successful in replacing 
+  the thread group image. This is strictly on FIFO basis and depends on
+  scheduler which threads will be scheduled first.
+
+#### exit
+
+* The exit system call, sets the thread state as ZOMBIE. However in senairo
+  where thread group leader is doing exit system call with having peer
+  threads concurrently executing, there can two options passing all active 
+  threads to init process as orphan threads or killing all the active threads.
+  
+* The xv6 implementation chooses the second approach, that the thread group
+  leader kills all the threads in the thread group which are concurrently
+  exeucting using the tgkill routine.
+
+#### wait
+
+* The wait system call waits for child thread group leader and for all the peer
+  threads in thread group to complete their exeuction.
+
+* However any peer thread can do wait system call for child thread group leader. 
+  This is possible as peer thread is also part of process. **NOTE** wait cannot
+  be done on peer thread, there is join system call for it !!.
 
 ## USERLAND THREADING LIBRARY
 
